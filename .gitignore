@@ -1,0 +1,14 @@
+/venv
+venv
+.venv
+.DS_Store
+.vscode*
+tmp_examples*
+new_checkpoint*
+batch_test*
+__pycache__/
+.DS_Store
+.vscode*
+tmp_examples*
+new_checkpoint*
+batch_test*

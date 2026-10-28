@@ -1,0 +1,3 @@
+from typing import Any
+
+def flash_attn_varlen_func(*args: Any, **kwargs: Any) -> Any: ...

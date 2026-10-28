@@ -1,0 +1,42 @@
+{
+  "include": ["wan_service", "tests", "third_party/Wan2.2"],
+  "exclude": [
+    "**/.venv",
+    "**/__pycache__",
+    "third_party/Wan2.2/wan/modules/animate/preprocess/human_visualization.py",
+    "third_party/Wan2.2/wan/modules/animate/preprocess/pose2d_utils.py"
+  ],
+  "stubPath": "typings",
+  "venvPath": ".",
+  "venv": "venv",
+  "pythonVersion": "3.11",
+  "extraPaths": ["."],
+  "typeCheckingMode": "basic",
+  "reportMissingModuleSource": "none",
+  "reportMissingImports": "warning",
+  "executionEnvironments": [
+    {
+      "root": "wan_service"
+    },
+    {
+      "root": "tests"
+    },
+    {
+      "root": "third_party/Wan2.2",
+      "extraPaths": ["third_party/Wan2.2"],
+      "reportOptionalSubscript": "none",
+      "reportOptionalOperand": "none",
+      "reportOptionalMemberAccess": "none",
+      "reportOptionalCall": "none",
+      "reportArgumentType": "none",
+      "reportOperatorIssue": "none",
+      "reportIndexIssue": "none",
+      "reportCallIssue": "none",
+      "reportGeneralTypeIssues": "none",
+      "reportReturnType": "none",
+      "reportAssignmentType": "none",
+      "reportAttributeAccessIssue": "warning",
+      "reportRedeclaration": "warning"
+    }
+  ]
+}
