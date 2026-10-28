@@ -1,0 +1,29 @@
+from enum import Enum
+from typing import Any, Callable, Sequence
+
+class InterpolationMode(Enum):
+    NEAREST: int
+    BILINEAR: int
+    BICUBIC: int
+    BOX: int
+    HAMMING: int
+    LANCZOS: int
+
+class Compose:
+    def __init__(self, transforms: Sequence[Callable[..., Any]]) -> None: ...
+    def __call__(self, img: Any) -> Any: ...
+
+class Resize:
+    def __init__(self, size: Any, interpolation: Any = ..., ...) -> None: ...
+    def __call__(self, img: Any) -> Any: ...
+
+class ToTensor:
+    def __call__(self, pic: Any) -> Any: ...
+
+class Normalize:
+    def __init__(self, mean: Any, std: Any, ...) -> None: ...
+    def __call__(self, tensor: Any) -> Any: ...
+
+class CenterCrop:
+    def __init__(self, size: Any) -> None: ...
+    def __call__(self, img: Any) -> Any: ...

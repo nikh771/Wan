@@ -1,0 +1,13 @@
+from typing import Any
+
+class io:
+    @staticmethod
+    def read_video(path: str, **kwargs: Any) -> Any: ...
+    @staticmethod
+    def write_video(path: str, tensor: Any, **kwargs: Any) -> None: ...
+
+class utils:
+    @staticmethod
+    def make_grid(tensor: Any, **kwargs: Any) -> Any: ...
+    @staticmethod
+    def save_image(tensor: Any, fp: Any, **kwargs: Any) -> None: ...

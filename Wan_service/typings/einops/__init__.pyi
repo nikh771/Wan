@@ -1,0 +1,3 @@
+from typing import Any
+
+def rearrange(tensor: Any, pattern: str, **axes_lengths: Any) -> Any: ...

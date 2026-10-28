@@ -1,0 +1,14 @@
+# Linux NVIDIA inference only — do NOT install on macOS.
+#
+# Typical install order on a CUDA host:
+#   python3.11 -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+#   pip install -r requirements-linux-cuda.txt
+#
+# Match the torch index URL to your driver/CUDA version (see https://pytorch.org).
+
+-r requirements.txt
+
+# Official Wan 2.2 TI2V-5B stack (includes flash_attn; requires NVIDIA CUDA).
+-r third_party/Wan2.2/requirements.txt

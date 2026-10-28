@@ -1,0 +1,38 @@
+# Secrets and local env
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Wan weights, outputs, and job artifacts (never commit)
+models/
+outputs/
+Wan2.2-TI2V-5B/
+wan_jobs/
+/workspace/
+
+# Credentials and keys
+*.pem
+*.key
+id_rsa*
+credentials.json
+secrets.json
+
+# OS
+.DS_Store

@@ -1,0 +1,6 @@
+from typing import Any
+
+import torch
+
+def resize(*args: Any, **kwargs: Any) -> Any: ...
+def to_tensor(pic: Any) -> torch.Tensor: ...
