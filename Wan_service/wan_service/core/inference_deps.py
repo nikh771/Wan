@@ -104,7 +104,7 @@ def probe_inference_dependencies() -> tuple[bool, str]:
         if "flash_attn" in err or "ModuleNotFoundError" in err:
             return (
                 False,
-                "Wan inference packages missing in WAN_PYTHON (install requirements-linux-cuda.txt).",
+                "Wan inference packages missing in WAN_PYTHON (install requirements.txt).",
             )
         return False, "Wan inference dependency check failed for WAN_PYTHON."
 

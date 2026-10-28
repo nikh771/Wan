@@ -20,7 +20,7 @@ UPSTREAM_TI2V5B_MPS_SUPPORTED = False
 
 MAC_DEV_INFERENCE_REASON = (
     "mac_dev is API/test-only; real Wan TI2V-5B inference requires linux_cuda with "
-    "NVIDIA CUDA, checkpoints, and requirements-linux-cuda.txt in WAN_PYTHON."
+    "NVIDIA CUDA, checkpoints, and requirements.txt in WAN_PYTHON."
 )
 
 
