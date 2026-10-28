@@ -103,14 +103,14 @@ def test_linux_cuda_missing_dependencies_blocks_inference(
     )
     monkeypatch.setattr(
         "wan_service.core.runtime.probe_inference_dependencies",
-        lambda: (False, "Wan inference packages missing in WAN_PYTHON (install requirements-linux-cuda.txt)."),
+        lambda: (False, "Wan inference packages missing in WAN_PYTHON (install requirements.txt)."),
     )
     monkeypatch.setenv("WAN_RUNTIME_MODE", "linux_cuda")
     clear_settings_cache()
     state = evaluate_inference_readiness()
     assert state.ready is False
     assert state.inference_dependencies_ready is False
-    assert "requirements-linux-cuda" in state.public_reason
+    assert "requirements.txt" in state.public_reason
 
 
 def test_linux_cuda_unavailable_cuda_blocks_inference(

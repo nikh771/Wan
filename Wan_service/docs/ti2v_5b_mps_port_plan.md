@@ -163,7 +163,7 @@ Only replace `from .attention import flash_attention` usage in `model.py` with i
 | API contract unchanged | Keep existing routes; optional env `WAN_INFERENCE_DEVICE=cuda\|mps` for subprocess only |
 | `/health` | Add `experimental_mps_enabled`, `mps_smoke_test_passed` (false until scripted test passes) |
 | `inference_ready` | **Only true after:** weights present + MPS deps probe + **successful smoke** (short T2V or tiny I2V), not when API starts |
-| Mac deps | New `requirements-mps-experimental.txt` (no flash_attn): torch+MPS, transformers, diffusers, etc. — **separate from** `requirements-linux-cuda.txt` |
+| Mac deps | `requirements.txt` (no flash_attn on macOS; torch+MPS, transformers, diffusers, etc.) |
 | Subprocess | Still invoke upstream `generate.py` **or** thin wrapper that sets `PYTHONPATH` + patches before import |
 
 ---

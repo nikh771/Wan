@@ -7,19 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git ffmpeg libsm6 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /workspace
-
-ARG WAN_REPO_REF=main
-RUN git clone --depth 1 --branch ${WAN_REPO_REF} https://github.com/Wan-Video/Wan2.2.git
-
 WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 COPY wan_service /app/wan_service
-RUN pip install --no-cache-dir -r /app/requirements.txt \
-    && pip install --no-cache-dir -r /workspace/Wan2.2/requirements.txt
+COPY third_party/Wan2.2 /app/third_party/Wan2.2
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 ENV WAN_RUNTIME_MODE=linux_cuda
-ENV WAN_REPO_DIR=/workspace/Wan2.2
+ENV WAN_REPO_DIR=/app/third_party/Wan2.2
 ENV WAN_CKPT_DIR=/workspace/Wan2.2-TI2V-5B
 ENV WAN_JOBS_DIR=/workspace/wan_jobs
 ENV PYTHONPATH=/app

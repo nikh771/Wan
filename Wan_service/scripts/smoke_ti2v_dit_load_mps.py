@@ -145,7 +145,7 @@ def load_dit_on_cpu(ckpt_dir: Path):
         from wan.modules.model import WanModel
     except ImportError as exc:
         raise RuntimeError(
-            "Install MPS inference deps: pip install -r requirements-mps-inference.txt"
+            "Install inference deps: pip install -r requirements.txt"
         ) from exc
 
     dtype = param_dtype_for_backend(torch.bfloat16)

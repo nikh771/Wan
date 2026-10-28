@@ -1,7 +1,17 @@
-# Mac API development + Linux service layer (install this everywhere).
-# Does NOT include PyTorch, flash_attn, or upstream Wan inference packages.
-# Linux GPU hosts: install a CUDA torch wheel, then requirements-linux-cuda.txt
+# Wan_service — single dependency file (API worker + all vendored Wan 2.2 stacks).
+#
+# Linux NVIDIA (recommended order):
+#   python3.11 -m venv .venv && source .venv/bin/activate
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+#   pip install -r requirements.txt
+#
+# macOS (API/tests or experimental MPS):
+#   pip install torch torchvision torchaudio
+#   pip install -r requirements.txt
+#
+# flash_attn is Linux-only; skipped on macOS.
 
+# --- FastAPI worker ---
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 python-multipart>=0.0.9
@@ -9,5 +19,51 @@ Pillow>=10.0.0
 httpx>=0.27.0
 pydantic-settings>=2.0.0
 
-# Tests (safe on macOS)
+# --- Tests ---
 pytest>=8.3.0
+
+# --- Wan 2.2 core (TI2V / I2V / T2V) ---
+torch>=2.4.0
+torchvision>=0.19.0
+torchaudio
+opencv-python>=4.9.0.80
+diffusers>=0.31.0
+transformers>=4.49.0,<=4.51.3
+tokenizers>=0.20.3
+accelerate>=1.1.1
+tqdm
+imageio[ffmpeg]
+easydict
+ftfy
+dashscope
+imageio-ffmpeg
+numpy>=1.23.5,<2
+flash_attn; sys_platform == "linux"
+
+# --- Wan Speech-to-Video extras (formerly requirements_s2v.txt) ---
+openai-whisper
+HyperPyYAML
+onnxruntime
+inflect
+wetext
+omegaconf
+conformer
+hydra-core
+lightning
+rich
+gdown
+matplotlib
+wget
+pyarrow
+pyworld
+librosa
+decord
+modelscope
+GitPython
+
+# --- Wan Animate extras (formerly requirements_animate.txt) ---
+peft
+pandas
+loguru
+sentencepiece
+-e git+https://github.com/facebookresearch/sam2.git@0e78a118995e66bb27d78518c4bd9a3e95b4e266#egg=SAM-2

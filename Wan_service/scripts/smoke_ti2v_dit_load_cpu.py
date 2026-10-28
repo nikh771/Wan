@@ -236,7 +236,7 @@ def build_loading_plan() -> LoadingPlan:
     if not accelerate_ok:
         raise RuntimeError(
             "Accelerate is required for low_cpu_mem_usage loading with this Diffusers version. "
-            "Install accelerate (already listed in requirements-mps-inference.txt)."
+            "Install accelerate (listed in requirements.txt)."
         )
 
     torch_dtype = ti2v_param_dtype()
