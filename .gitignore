@@ -1,9 +1,8 @@
-.env
 .env.*
 !.env.example
 
 venv/
-venv/
+.venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -11,6 +10,7 @@ __pycache__/
 models/
 wan_jobs/
 outputs/
+.env
 
 .DS_Store
 .vscode/
