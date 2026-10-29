@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_WAN_REPO = PROJECT_ROOT / "third_party" / "Wan2.2"
-DEFAULT_CKPT = PROJECT_ROOT / "Wan2.2-TI2V-5B"
+DEFAULT_CKPT = PROJECT_ROOT / "models" / "Wan2.2-TI2V-5B"
 
 RuntimeMode = Literal["mac_dev", "linux_cuda"]
 

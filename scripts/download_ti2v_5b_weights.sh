@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CKPT_DIR="${WAN_CKPT_DIR:-${ROOT}/Wan2.2-TI2V-5B}"
+CKPT_DIR="${WAN_CKPT_DIR:-${ROOT}/models/Wan2.2-TI2V-5B}"
 
 echo "Target checkpoint directory: ${CKPT_DIR}"
 mkdir -p "${CKPT_DIR}"
