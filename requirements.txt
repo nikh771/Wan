@@ -1,7 +1,17 @@
-# Wan Service — GPU requirements
-# Install CUDA-enabled PyTorch separately before this file.
 
-# --- FastAPI ---
+# Wan Service — canonical Python dependencies
+# Recommended: Python 3.11+
+#
+# Install CUDA-enabled PyTorch separately on Linux NVIDIA:
+#   python -m pip install torch torchvision torchaudio \
+#     --index-url https://download.pytorch.org/whl/cu128
+#
+# Then install:
+#   python -m pip install -r requirements.txt
+#
+# Optional packages are documented at the bottom.
+
+# --- FastAPI service ---
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 python-multipart>=0.0.9
@@ -12,7 +22,7 @@ pydantic-settings>=2.0.0
 # --- Testing ---
 pytest>=8.3.0
 
-# --- Wan 2.2 core ---
+# --- Wan 2.2 core: TI2V / I2V / T2V ---
 opencv-python>=4.9.0.80
 diffusers>=0.31.0
 transformers>=4.49.0,<=4.51.3
@@ -52,4 +62,14 @@ peft
 pandas
 loguru
 sentencepiece
-decord
+
+# --- Optional Linux-only dependencies ---
+# Install FlashAttention separately if required by your selected pipeline.
+# flash_attn
+
+# Install SAM2 separately if Animate preprocessing requires it:
+# python -m pip install \
+#   "sam2 @ git+https://github.com/facebookresearch/sam2.git@0e78a118995e66bb27d78518c4bd9a3e95b4e266"
+
+# Decord is used by relevant S2V/Animate workflows:
+# decord; sys_platform == "linux"

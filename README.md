@@ -180,14 +180,15 @@ Model checkpoints are downloaded separately from the source repository.
 Install the Hugging Face Hub CLI:
 
 ```bash
-python -m pip install -U huggingface_hub
+python -m pip install "huggingface_hub==0.36.2"
 ```
 
 Download the official TI2V-5B checkpoints:
 
 ```bash
+unset HF_HUB_ENABLE_HF_TRANSFER
 hf download Wan-AI/Wan2.2-TI2V-5B \
-  --local-dir models/Wan2.2-TI2V-5B
+  --local-dir /Wan/models/Wan2.2-TI2V-5B
 ```
 
 The download is approximately 32 GB. Ensure that the machine has sufficient disk space and network connectivity.
