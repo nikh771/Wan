@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     # Heuristic only — does not guarantee TI2V-5B will succeed (linux_cuda).
     WAN_MIN_VRAM_GB: float = 14.0
 
+    # Prefer full-GPU inference when VRAM allows (see WAN_GPU_ONLY_MIN_VRAM_GB).
+    WAN_INFERENCE_GPU_ONLY: bool = True
+    WAN_GPU_ONLY_MIN_VRAM_GB: float = 24.0
+    WAN_CUDA_DEVICE: str = "0"
+
     @field_validator("WAN_RUNTIME_MODE", mode="before")
     @classmethod
     def normalize_runtime_mode(cls, value: str) -> str:
