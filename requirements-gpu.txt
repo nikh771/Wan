@@ -1,8 +1,8 @@
 --extra-index-url https://download.pytorch.org/whl/cu128
 
-torch>=2.4.0
-torchvision>=0.19.0
-torchaudio
+torch==2.11.0
+torchvision==0.26.0
+torchaudio==2.11.0
 
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
@@ -47,5 +47,3 @@ pandas
 loguru
 sentencepiece
 huggingface_hub==0.36.2
---only-binary=flash-attn
-flash-attn @ https://github.com/PozzettiAndrea/cuda-wheels/releases/download/flash_attn-latest/flash_attn-2.8.3+cu128torch2.11-cp312-cp312-manylinux_2_34_x86_64.manylinux_2_35_x86_64.whl

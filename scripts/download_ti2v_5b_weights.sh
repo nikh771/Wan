@@ -8,10 +8,15 @@ CKPT_DIR="${WAN_CKPT_DIR:-${ROOT}/models/Wan2.2-TI2V-5B}"
 echo "Target checkpoint directory: ${CKPT_DIR}"
 mkdir -p "${CKPT_DIR}"
 
-if ! command -v huggingface-cli >/dev/null 2>&1; then
-  echo "Install the Hugging Face CLI first: pip install 'huggingface_hub[cli]'"
+if ! command -v hf >/dev/null 2>&1 && ! command -v huggingface-cli >/dev/null 2>&1; then
+  echo "Install the Hugging Face CLI first: pip install 'huggingface_hub==0.36.2'"
   exit 1
 fi
 
-huggingface-cli download Wan-AI/Wan2.2-TI2V-5B --local-dir "${CKPT_DIR}"
+unset HF_HUB_ENABLE_HF_TRANSFER
+if command -v hf >/dev/null 2>&1; then
+  hf download Wan-AI/Wan2.2-TI2V-5B --local-dir "${CKPT_DIR}"
+else
+  huggingface-cli download Wan-AI/Wan2.2-TI2V-5B --local-dir "${CKPT_DIR}"
+fi
 echo "Done. Set WAN_CKPT_DIR=${CKPT_DIR} in .env on your linux_cuda host."
