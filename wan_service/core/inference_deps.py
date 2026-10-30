@@ -40,10 +40,12 @@ def resolve_wan_python() -> Path | None:
     raw = settings.WAN_PYTHON.strip() or "python"
     found = shutil.which(raw)
     if found:
-        return Path(found)
+        return Path(found).resolve()
     candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = settings.project_root / candidate
     if candidate.is_file():
-        return candidate
+        return candidate.resolve()
     return None
 
 

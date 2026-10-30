@@ -3,7 +3,7 @@
 torch==2.11.0
 torchvision==0.26.0
 torchaudio==2.11.0
-
+decord==0.6.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 python-multipart>=0.0.9
