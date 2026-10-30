@@ -56,13 +56,11 @@ def _inference_env(*, repo: Path, gpu_only: bool) -> dict[str, str]:
     env["PYTHONPATH"] = prefix + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     if not gpu_only and not env.get("PYTORCH_CUDA_ALLOC_CONF"):
         env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-    for key in (
-        "PYTHONDEBUG",
-        "DEBUGPY_LAUNCHER_PORT",
-        "VSCODE_DEBUGPY_ADAPTER_ENDPOINTS",
-        "BUNDLED_DEBUGPY_PATH",
-    ):
-        env.pop(key, None)
+    for key in list(env.keys()):
+        if key.startswith(("DEBUGPY", "PYDEVD", "VSCODE_DEBUG", "BUNDLED_DEBUGPY")):
+            env.pop(key, None)
+    env.pop("PYTHONDEBUG", None)
+    env["PYTHONUNBUFFERED"] = "1"
     return env
 
 
@@ -145,6 +143,7 @@ def run_wan_inference(
         stderr=subprocess.STDOUT,
         text=True,
         env=env,
+        start_new_session=True,
     )
     log_tail = _stream_subprocess_output(process)
 
