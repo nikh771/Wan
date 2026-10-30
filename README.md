@@ -149,26 +149,21 @@ Ensure the source is available in:
 third_party/Wan2.2/
 ```
 
-This repository **vendors** Wan 2.2 under that path. After clone, verify the entry point:
+This repository **vendors** Wan 2.2 under that path (normal tracked files in git, including service-specific patches). After clone or `git pull`, verify:
 
 ```bash
 test -f third_party/Wan2.2/generate.py \
   && echo "Wan 2.2 source found"
 ```
 
-If the directory is missing (for example in a minimal checkout), clone upstream without overwriting an existing tree:
+**GPU / RunPod:** use `git pull` on **this repo only**. Do **not** re-clone upstream Wan2.2 into `third_party/Wan2.2` on each SSH session — that overwrites vendored changes. See `third_party/Wan2.2/VENDORED.md`.
+
+Only if `third_party/Wan2.2/` is **missing** after clone (minimal checkout), clone upstream once into that path, then commit the tree in this repo if you maintain a fork.
+
+Record the vendored revision in the parent repo:
 
 ```bash
-mkdir -p third_party
-
-git clone https://github.com/Wan-Video/Wan2.2.git \
-  third_party/Wan2.2
-```
-
-Record the upstream source revision for reproducibility:
-
-```bash
-git -C third_party/Wan2.2 rev-parse HEAD
+git log -1 --oneline -- third_party/Wan2.2
 ```
 
 For this service, use the root `requirements.txt` as the canonical dependency manifest rather than installing upstream `third_party/Wan2.2/requirements*.txt` separately.
