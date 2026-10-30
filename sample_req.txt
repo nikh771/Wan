@@ -1,0 +1,231 @@
+# =============================================================================
+# Wan Service + third_party/Wan2.2 — sample dependency manifest (docs only)
+# =============================================================================
+#
+# For GPU pip install, use:  requirements-gpu.txt
+# For cross-platform / Mac API-only deps:  requirements.txt
+#
+# This file documents everything needed to run the full project. It mirrors
+# root requirements.txt plus notes for PyTorch, flash-attn, checkpoints, and
+# optional upstream tasks (Animate, S2V).
+#
+# Python: 3.11+ recommended (upstream Wan2.2 supports >=3.10,<4)
+#
+# -----------------------------------------------------------------------------
+# SYSTEM / NON-PIP (required for end-to-end TI2V-5B service)
+# -----------------------------------------------------------------------------
+# - Linux host with NVIDIA GPU (wan_service linux_cuda; TI2V-5B is CUDA-only)
+# - NVIDIA drivers + CUDA-compatible PyTorch (see PyTorch section below)
+# - FFmpeg and ffprobe on PATH (FFMPEG_BINARY / FFPROBE_BINARY in .env)
+# - Git (clone third_party/Wan2.2 if missing)
+# - Disk: ~32 GB for Wan2.2-TI2V-5B weights + deps + outputs
+# - VRAM: WAN_MIN_VRAM_GB defaults to 14; upstream recommends ~24 GB for 720p
+#
+# Repo layout (not installed via pip):
+# - third_party/Wan2.2/          upstream source (generate.py, wan package)
+# - models/Wan2.2-TI2V-5B/       Hugging Face checkpoints (not in Git)
+# - .env                         from .env.example (WAN_PYTHON, API key, paths)
+# - wan_jobs/                    job inputs/outputs
+#
+# Model download (example):
+#   python -m pip install "huggingface_hub==0.36.2"
+#   hf download Wan-AI/Wan2.2-TI2V-5B --local-dir models/Wan2.2-TI2V-5B
+#
+# Runtime wiring:
+# - wan_service calls WAN_PYTHON subprocess: third_party/Wan2.2/generate.py
+#   --task ti2v-5B (see wan_service/apps/jobs/services/inference.py)
+# - Health probe imports in WAN_PYTHON: torch, transformers, diffusers,
+#   easydict, flash_attn (linux_cuda only)
+#
+# -----------------------------------------------------------------------------
+# INSTALL ORDER (Linux NVIDIA — production TI2V service)
+# -----------------------------------------------------------------------------
+# 1. Create venv and upgrade pip
+# 2. Install PyTorch (NOT listed below — pick index matching your driver):
+#
+#    python -m pip install torch torchvision torchaudio \
+#      --index-url https://download.pytorch.org/whl/cu128
+#
+#    Upstream minimums: torch>=2.4.0, torchvision>=0.19.0
+#
+# 3. Install this file OR requirements.txt (same package pins):
+#
+#    python -m pip install -r sample_req.txt
+#
+# 4. Install FlashAttention in the SAME interpreter as WAN_PYTHON (required
+#    for inference_ready on linux_cuda). Prefer a PREBUILT wheel (see section
+#    at bottom). Source builds often sit at "Building wheel ..." for 20–60+ min
+#    with no output — that is normal, not always a hang.
+#
+#    python -m pip install packaging psutil ninja wheel
+#    MAX_JOBS=4 python -m pip install flash-attn -v \
+#      --no-build-isolation --no-cache-dir
+#
+# 5. Verify:
+#
+#    python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+#    python -c "import flash_attn"
+#
+# 6. Start API from repo root:
+#
+#    uvicorn wan_service.main:app --host 0.0.0.0 --port 8080
+#
+# Mac / API-only dev: FastAPI deps suffice; inference_ready stays false without
+# Linux + CUDA + checkpoints + flash_attn in WAN_PYTHON.
+#
+# -----------------------------------------------------------------------------
+# OPTIONAL — full upstream generate.py tasks (not used by wan_service today)
+# -----------------------------------------------------------------------------
+# Task          | Extra pip / assets
+# --------------|--------------------------------------------------------------
+# ti2v-5B       | Core below + flash_attn + TI2V-5B ckpt (service default)
+# t2v-A14B      | Core + flash_attn + T2V-A14B checkpoints
+# i2v-A14B      | Core + flash_attn + I2V-A14B checkpoints
+# s2v-14B       | Core + S2V section + decord + S2V-14B checkpoints
+# animate-14B   | Core + Animate section + decord + SAM2 (git) + Animate ckpt
+# prompt extend | dashscope (+ cloud API credentials)
+#
+# Upstream split manifests (reference only; root requirements.txt is canonical):
+#   third_party/Wan2.2/requirements.txt
+#   third_party/Wan2.2/requirements_s2v.txt
+#   third_party/Wan2.2/requirements_animate.txt
+#
+# =============================================================================
+# PIP PACKAGES — wan_service (FastAPI)
+# =============================================================================
+
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.9
+Pillow>=10.0.0
+httpx>=0.27.0
+pydantic-settings>=2.0.0
+
+# =============================================================================
+# PIP PACKAGES — testing
+# =============================================================================
+
+pytest>=8.3.0
+
+# =============================================================================
+# PIP PACKAGES — Wan 2.2 core (TI2V / I2V / T2V via generate.py)
+# Matches third_party/Wan2.2/requirements.txt (except torch* and flash_attn)
+# =============================================================================
+
+opencv-python>=4.9.0.80
+diffusers>=0.31.0
+transformers>=4.49.0,<=4.51.3
+tokenizers>=0.20.3
+accelerate>=1.1.1
+einops
+tqdm
+imageio[ffmpeg]
+easydict
+ftfy
+dashscope
+imageio-ffmpeg
+numpy>=1.23.5,<2
+
+# =============================================================================
+# PIP PACKAGES — Speech-to-Video (generate.py --task s2v-14B)
+# From third_party/Wan2.2/requirements_s2v.txt
+# =============================================================================
+
+openai-whisper
+HyperPyYAML
+onnxruntime
+inflect
+wetext
+omegaconf
+conformer
+hydra-core
+lightning
+rich
+gdown
+matplotlib
+wget
+pyarrow
+pyworld
+librosa
+modelscope
+GitPython
+
+# =============================================================================
+# PIP PACKAGES — Animate (generate.py --task animate-14B)
+# From third_party/Wan2.2/requirements_animate.txt (partial; see git deps below)
+# =============================================================================
+
+peft
+pandas
+loguru
+sentencepiece
+
+# =============================================================================
+# PIP PACKAGES — tooling (model download; not imported at inference runtime)
+# =============================================================================
+
+huggingface_hub==0.36.2
+
+# =============================================================================
+# INSTALL SEPARATELY — PyTorch (required; version must match CUDA driver)
+# =============================================================================
+# torch>=2.4.0
+# torchvision>=0.19.0
+# torchaudio
+#
+# Example (CUDA 12.8 wheels):
+#   python -m pip install torch torchvision torchaudio \
+#     --index-url https://download.pytorch.org/whl/cu128
+
+# =============================================================================
+# INSTALL SEPARATELY — FlashAttention (required for linux_cuda health + TI2V)
+# =============================================================================
+# flash-attn
+#
+# WHERE: Linux x86_64 + NVIDIA only. Do not build on macOS for production TI2V;
+# wan_service health expects flash_attn in WAN_PYTHON on linux_cuda hosts.
+#
+# --- Option A (recommended): prebuilt wheel — no compile, finishes in seconds ---
+# Match Python (cp311), PyTorch major/minor, and CUDA tag to your torch build:
+#
+#   python -c "import sys,torch; print(sys.version); print(torch.__version__, torch.version.cuda)"
+#
+# Official release wheels (pick the file that matches cp3xx + cu12 + torch2.x):
+#   https://github.com/Dao-AILab/flash-attention/releases
+#
+# Example (Python 3.11, PyTorch 2.4.x, CUDA 12.x — adjust filename if needed):
+#   pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3.post2/flash_attn-2.8.3.post2+cu12torch2.4cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
+#
+# Astral/community indexes also publish torch×cuda matched wheels:
+#   https://wheels.astral.sh/
+#
+# --- Option B: compile from source (slow; looks "stuck" at Building wheel) ---
+# Requires: nvcc, CUDA toolkit matching PyTorch, g++ , ~16GB+ RAM, patience.
+#
+#   python -m pip install packaging psutil ninja wheel
+#   MAX_JOBS=4 pip install flash-attn -v --no-build-isolation --no-cache-dir
+#
+# While building, confirm progress in another terminal:
+#   ps aux | grep -E 'nvcc|ninja|gcc' | head
+#   top -o cpu
+#
+# If CPU is 0% for 10+ minutes with no nvcc/ninja processes, cancel (Ctrl+C)
+# and use Option A or fix CUDA toolkit / torch mismatch.
+#
+# --- Option C (upstream INSTALL.md): install from git (still compiles) ---
+#   pip install git+https://github.com/Dao-AILab/flash-attention.git
+
+# =============================================================================
+# INSTALL SEPARATELY — Animate / S2V video I/O (optional for TI2V service)
+# =============================================================================
+# decord
+
+# =============================================================================
+# INSTALL SEPARATELY — SAM 2 for Animate preprocessing (optional for TI2V)
+# =============================================================================
+# git+https://github.com/facebookresearch/sam2.git@0e78a118995e66bb27d78518c4bd9a3e95b4e266#egg=SAM-2
+
+# =============================================================================
+# INSTALL SEPARATELY — Animate pipeline video helpers (optional)
+# =============================================================================
+# moviepy

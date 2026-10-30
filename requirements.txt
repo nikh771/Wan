@@ -1,13 +1,15 @@
 
-# Wan Service — canonical Python dependencies
+# Wan Service — canonical Python dependencies (no torch / flash-attn)
 # Recommended: Python 3.11+
 #
-# Install CUDA-enabled PyTorch separately on Linux NVIDIA:
+# Linux NVIDIA GPU (one command — PyTorch cu128 + deps + flash-attn wheel):
+#   python -m pip install -r requirements-gpu.txt
+#
+# Or install PyTorch separately, then this file:
 #   python -m pip install torch torchvision torchaudio \
 #     --index-url https://download.pytorch.org/whl/cu128
-#
-# Then install:
 #   python -m pip install -r requirements.txt
+#   # then flash-attn wheel — see requirements-gpu.txt
 #
 # Optional packages are documented at the bottom.
 
@@ -65,11 +67,13 @@ sentencepiece
 
 # --- Optional Linux-only dependencies ---
 # Install FlashAttention separately if required by your selected pipeline.
-# flash_attn
+# python -m pip install packaging psutil ninja wheel
+# MAX_JOBS=2 python -m pip install flash-attn \
+#   --no-build-isolation \
+#   --no-cache-dir
 
 # Install SAM2 separately if Animate preprocessing requires it:
-# python -m pip install \
-#   "sam2 @ git+https://github.com/facebookresearch/sam2.git@0e78a118995e66bb27d78518c4bd9a3e95b4e266"
+# python -m pip install git+https://github.com/facebookresearch/sam2.git@0e78a118995e66bb27d78518c4bd9a3e95b4e266"
 
 # Decord is used by relevant S2V/Animate workflows:
-# decord; sys_platform == "linux"
+#  python -m pip install decord 
