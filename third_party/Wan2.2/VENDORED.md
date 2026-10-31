@@ -21,6 +21,7 @@ When syncing upstream intentionally, merge or cherry-pick into this tree and com
 ## Patches in this copy (vs stock upstream)
 
 - `generate.py`: CLI flag `--init_on_cpu` passed into `WanTI2V` (for `wan_service` GPU / memory modes).
+- `generate.py`: reads `WAN_INFERENCE_GPU_ONLY` / `WAN_INFERENCE_FORCE_GPU_ONLY` for full-GPU ti2v defaults when offload/init flags are omitted.
 
 Record upstream revision when you merge:
 

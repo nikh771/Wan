@@ -51,12 +51,17 @@ class Settings(BaseSettings):
 
     WAN_SIZE_LANDSCAPE: str = "1280*704"
     WAN_SIZE_PORTRAIT: str = "704*1280"
+    # Override generate.py defaults (ti2v-5B: 50 steps, 121 frames). Lower = faster, lower quality.
+    WAN_INFERENCE_SAMPLE_STEPS: int | None = None
+    WAN_INFERENCE_FRAME_NUM: int | None = None
 
     # Heuristic only — does not guarantee TI2V-5B will succeed (linux_cuda).
     WAN_MIN_VRAM_GB: float = 14.0
 
     # Prefer full-GPU inference when VRAM allows (see WAN_GPU_ONLY_MIN_VRAM_GB).
     WAN_INFERENCE_GPU_ONLY: bool = True
+    # Skip VRAM threshold; always pass full-GPU flags to generate.py (may OOM on small GPUs).
+    WAN_INFERENCE_FORCE_GPU_ONLY: bool = False
     WAN_GPU_ONLY_MIN_VRAM_GB: float = 24.0
     WAN_CUDA_DEVICE: str = "0"
 

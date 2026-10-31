@@ -34,10 +34,16 @@ def resolve_gpu_only_inference() -> tuple[bool, str]:
         return False, "backend is not linux_cuda"
     if not cfg.WAN_INFERENCE_GPU_ONLY:
         return False, "WAN_INFERENCE_GPU_ONLY is disabled"
+    if cfg.WAN_INFERENCE_FORCE_GPU_ONLY:
+        return True, "WAN_INFERENCE_FORCE_GPU_ONLY enabled (full GPU, no VRAM gate)"
 
     _available, _detail, total_gb, _vram_ok = torch_optional_probe_cuda()
     if total_gb is None:
-        return False, "could not read GPU VRAM; using memory-saving mode"
+        return (
+            True,
+            "WAN_INFERENCE_GPU_ONLY enabled (VRAM not probed in API process; "
+            "subprocess uses full-GPU generate.py flags)",
+        )
     if total_gb < cfg.WAN_GPU_ONLY_MIN_VRAM_GB:
         return (
             False,
@@ -51,6 +57,10 @@ def _inference_env(*, repo: Path, gpu_only: bool) -> dict[str, str]:
     cfg = get_settings()
     env = os.environ.copy()
     env["WAN_INFERENCE_BACKEND"] = cfg.resolved_inference_backend()
+    if cfg.WAN_INFERENCE_GPU_ONLY:
+        env["WAN_INFERENCE_GPU_ONLY"] = "true"
+    if cfg.WAN_INFERENCE_FORCE_GPU_ONLY:
+        env["WAN_INFERENCE_FORCE_GPU_ONLY"] = "true"
     env["CUDA_VISIBLE_DEVICES"] = cfg.WAN_CUDA_DEVICE.strip() or "0"
     prefix = str(repo)
     env["PYTHONPATH"] = prefix + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
@@ -125,12 +135,25 @@ def run_wan_inference(
     if not gpu_only:
         cmd.append("--t5_cpu")
 
+    if cfg.WAN_INFERENCE_SAMPLE_STEPS is not None:
+        cmd.extend(["--sample_steps", str(cfg.WAN_INFERENCE_SAMPLE_STEPS)])
+    if cfg.WAN_INFERENCE_FRAME_NUM is not None:
+        frame_num = cfg.WAN_INFERENCE_FRAME_NUM
+        if frame_num <= 0 or (frame_num - 1) % 4 != 0:
+            raise ValueError(
+                f"WAN_INFERENCE_FRAME_NUM must be 4n+1 (got {frame_num}); e.g. 49, 81, 121"
+            )
+        cmd.extend(["--frame_num", str(frame_num)])
+
     env = _inference_env(repo=repo, gpu_only=gpu_only)
 
     logger.info(
-        "Starting Wan inference cwd=%s size=%s backend=%s gpu_only=%s (%s) cuda_device=%s",
+        "Starting Wan inference cwd=%s size=%s steps=%s frames=%s backend=%s "
+        "gpu_only=%s (%s) cuda_device=%s",
         repo,
         size,
+        cfg.WAN_INFERENCE_SAMPLE_STEPS if cfg.WAN_INFERENCE_SAMPLE_STEPS is not None else "default",
+        cfg.WAN_INFERENCE_FRAME_NUM if cfg.WAN_INFERENCE_FRAME_NUM is not None else "default",
         env["WAN_INFERENCE_BACKEND"],
         gpu_only,
         gpu_mode_reason,

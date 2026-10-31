@@ -36,16 +36,17 @@ def _inference_modules_for_backend() -> tuple[str, ...]:
 
 
 def resolve_wan_python() -> Path | None:
+    """Return the configured interpreter path without following venv symlinks to system python."""
     settings = get_settings()
     raw = settings.WAN_PYTHON.strip() or "python"
-    found = shutil.which(raw)
-    if found:
-        return Path(found).resolve()
     candidate = Path(raw)
     if not candidate.is_absolute():
         candidate = settings.project_root / candidate
     if candidate.is_file():
-        return candidate.resolve()
+        return candidate
+    found = shutil.which(raw)
+    if found:
+        return Path(found)
     return None
 
 
@@ -106,7 +107,8 @@ def probe_inference_dependencies() -> tuple[bool, str]:
         if "flash_attn" in err or "ModuleNotFoundError" in err:
             return (
                 False,
-                "Wan inference packages missing in WAN_PYTHON (install requirements-linux-cuda.txt).",
+                "Wan inference packages missing in WAN_PYTHON "
+                "(pip install -r requirements-gpu.txt and requirements-gpu-flash.txt).",
             )
         return False, "Wan inference dependency check failed for WAN_PYTHON."
 

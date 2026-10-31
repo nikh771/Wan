@@ -305,6 +305,22 @@ def _parse_args():
     return args
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _apply_service_gpu_only_defaults(args) -> None:
+    """Honor wan_service .env when CLI leaves offload/init_on_cpu unset (manual runs)."""
+    if not (_env_flag("WAN_INFERENCE_GPU_ONLY") or _env_flag("WAN_INFERENCE_FORCE_GPU_ONLY")):
+        return
+    if "ti2v" not in args.task or not torch.cuda.is_available():
+        return
+    if args.offload_model is None:
+        args.offload_model = False
+    if args.init_on_cpu is None:
+        args.init_on_cpu = False
+
+
 def _init_logging(rank):
     # logging
     if rank == 0:
@@ -323,6 +339,8 @@ def generate(args):
     local_rank = int(os.getenv("LOCAL_RANK", 0))
     device = local_rank
     _init_logging(rank)
+
+    _apply_service_gpu_only_defaults(args)
 
     if args.offload_model is None:
         args.offload_model = False if world_size > 1 else True
