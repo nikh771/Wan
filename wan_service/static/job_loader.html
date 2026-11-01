@@ -195,6 +195,26 @@
 
     let pollTimer = null;
     let activeJobId = null;
+    const JOB_ID_RE = /^wan_[0-9a-f]{16}$/i;
+
+    function isValidJobId(id) {
+      return JOB_ID_RE.test(String(id || "").trim());
+    }
+
+    function clearJobIdFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      if (!params.has("job_id")) return;
+      params.delete("job_id");
+      const q = params.toString();
+      history.replaceState(null, "", q ? "?" + q : window.location.pathname);
+    }
+
+    function revokePolling(message) {
+      stopPolling();
+      activeJobId = null;
+      clearJobIdFromUrl();
+      showJobError(message);
+    }
 
     function loadSettings() {
       try {
@@ -282,15 +302,36 @@
 
     async function fetchJob(jobId) {
       const base = els.baseUrl.value.replace(/\/$/, "");
-      const res = await fetch(base + "/jobs/" + encodeURIComponent(jobId), { headers: headers() });
+      const res = await fetch(
+        base + "/jobs/" + encodeURIComponent(jobId) + "/progress",
+        { headers: headers() }
+      );
       if (!res.ok) {
-        const body = await res.text();
-        throw new Error(res.status + " " + body);
+        const raw = await res.text();
+        let detail = raw;
+        let revoke = res.status === 400 || res.status === 404 || res.status === 401;
+        try {
+          const err = JSON.parse(raw);
+          const d = err.detail;
+          if (typeof d === "object" && d !== null) {
+            detail = d.message || JSON.stringify(d);
+            if (d.revoke_polling) revoke = true;
+          } else if (typeof d === "string") {
+            detail = d;
+          }
+        } catch (_) {}
+        const err = new Error((res.status + " " + detail).trim());
+        err.revokePolling = revoke;
+        throw err;
       }
       return res.json();
     }
 
     function startPolling(jobId) {
+      if (!isValidJobId(jobId)) {
+        revokePolling("Invalid or placeholder job_id — submit a job or paste a real id (wan_…).");
+        return;
+      }
       stopPolling();
       activeJobId = jobId;
       els.jobIdLabel.textContent = jobId;
@@ -303,7 +344,7 @@
           const data = await fetchJob(jobId);
           renderJob(data);
         } catch (e) {
-          showJobError(String(e));
+          revokePolling(String(e.message || e));
         }
       };
       tick();
@@ -358,7 +399,7 @@
     const params = new URLSearchParams(window.location.search);
     const watchId = params.get("job_id");
     if (watchId) {
-      startPolling(watchId);
+      startPolling(watchId.trim());
     }
   </script>
 </body>

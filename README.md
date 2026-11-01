@@ -49,6 +49,7 @@ Replace `<YOUR_REPOSITORY_URL>` with your Git repository URL and `Wan` with your
 ```bash
 python3 -m venv venv
 source venv/bin/activate
+bash scripts/runpod_remote_setup.sh
 
 python -m pip install --upgrade pip
 ```
@@ -251,16 +252,25 @@ curl -X POST http://127.0.0.1:8080/jobs \
 
 The response contains a job ID.
 
-### Check job status
+### Check job progress (poll by job id)
 
-Replace `JOB_ID` with the returned ID:
+Replace `JOB_ID` with the value from the create response (or use `progress_url` from that JSON):
+
+```bash
+curl -s "http://127.0.0.1:8080/jobs/JOB_ID/progress?api_key=$WAN_WORKER_API_KEY" \
+  | python -m json.tool
+```
+
+Returns `status`, `progress` (0–100), `stage`, `message`, optional diffusion `inference_step` / `inference_total_steps`, and `done` (`true` when `completed` or `failed`). Poll every few seconds until `done` is true — no need to call `/health` for job progress.
+
+Invalid or unknown job ids return **400/404** with `"revoke_polling": true` in the JSON `detail` — stop polling (do not use the literal placeholder `YOUR_JOB_ID`).
+
+Full job details (includes `recent_logs`):
 
 ```bash
 curl http://127.0.0.1:8080/jobs/JOB_ID \
   -H "Authorization: Bearer $WAN_WORKER_API_KEY"
 ```
-
-The JSON includes `stage`, `message`, `progress` (0–100), optional `inference_step` / `inference_total_steps`, and `recent_logs` while the job is running.
 
 ### Retrieve the generated video
 

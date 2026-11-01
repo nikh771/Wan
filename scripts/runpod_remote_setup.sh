@@ -42,19 +42,26 @@ else
   fi
 fi
 
-echo "==> Creating venv..."
-python3 -m venv venv
+if [[ -x venv/bin/python ]]; then
+  echo "==> Reusing existing venv (skip recreate to save disk/time)"
+else
+  echo "==> Creating venv..."
+  python3 -m venv venv
+fi
 # shellcheck disable=SC1091
 source venv/bin/activate
 
 python -m pip install --upgrade pip
-pip cache purge 2>/dev/null || true
 
-echo "==> Installing GPU dependencies (requirements-gpu.txt)..."
-python -m pip install -r requirements-gpu.txt
+if python -c "import torch, flash_attn" 2>/dev/null; then
+  echo "==> torch + flash_attn already installed; skipping GPU pip installs"
+else
+  echo "==> Installing GPU dependencies (requirements-gpu.txt)..."
+  python -m pip install -r requirements-gpu.txt
 
-echo "==> Installing flash-attn wheel (--no-deps so torch is not upgraded)..."
-python -m pip install --no-deps --only-binary=flash-attn -r requirements-gpu-flash.txt
+  echo "==> Installing flash-attn wheel (--no-deps so torch is not upgraded)..."
+  python -m pip install --no-deps --only-binary=flash-attn -r requirements-gpu-flash.txt
+fi
 
 python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.version.cuda); print('GPU:', torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"
 python -c "import flash_attn; print('flash_attn:', flash_attn.__version__)"
@@ -93,12 +100,16 @@ echo "Setup complete. Start the API:"
 echo "  cd ${ROOT} && source venv/bin/activate"
 echo "  uvicorn wan_service.main:app --host 0.0.0.0 --port 8080"
 echo ""
-echo "Health check (on pod or via SSH tunnel):"
+echo "Service health (once at startup):"
 echo "  curl -s http://127.0.0.1:8080/health | python -m json.tool"
+echo ""
+echo "Job progress (after POST /jobs returns job_id — poll until done is true):"
+echo "  JOB_ID=wan_xxxxxxxxxxxxxxxx"
+echo '  curl -s "http://127.0.0.1:8080/jobs/${JOB_ID}/progress?api_key=YOUR_WAN_WORKER_API_KEY" | python -m json.tool'
 echo ""
 echo "Warm worker (default WAN_PERSISTENT_INFERENCE=true in .env.example):"
 echo "  After start, wait until persistent_worker_ready is true in /health (one-time model load)."
-echo "  Job 2+ then skip reloading checkpoints. UI: http://127.0.0.1:8080/ui/job_loader.html"
+echo "  Job 2+ then skip reloading checkpoints. UI: http://127.0.0.1:8080/ui/job_loader.html?job_id=JOB_ID"
 echo ""
 echo "Optional .env tuning (edit ${ROOT}/.env): WAN_INFERENCE_FORCE_GPU_ONLY, WAN_GPU_ONLY_MIN_VRAM_GB,"
 echo "  WAN_INFERENCE_SAMPLE_STEPS, WAN_INFERENCE_FRAME_NUM — see .env.example"

@@ -14,6 +14,7 @@ if ! command -v hf >/dev/null 2>&1 && ! command -v huggingface-cli >/dev/null 2>
 fi
 
 unset HF_HUB_ENABLE_HF_TRANSFER
+# Skips/resumes files already under ${CKPT_DIR} (safe to re-run).
 if command -v hf >/dev/null 2>&1; then
   hf download Wan-AI/Wan2.2-TI2V-5B --local-dir "${CKPT_DIR}"
 else

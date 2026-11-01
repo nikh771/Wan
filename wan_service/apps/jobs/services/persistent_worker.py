@@ -44,6 +44,34 @@ class PersistentInferenceWorker:
     def init_error(self) -> str | None:
         return self._init_error
 
+    @property
+    def is_loading(self) -> bool:
+        return (
+            self._started
+            and not self.is_ready
+            and self._init_error is None
+            and self._process is not None
+            and self._process.poll() is None
+        )
+
+    def wait_until_ready(self, *, timeout_sec: float) -> None:
+        """Block until warm worker is ready or failed (avoids a second GPU model load)."""
+        if self.is_ready:
+            return
+        if self._init_error:
+            raise RuntimeError(self._init_error)
+        if not self._started:
+            raise RuntimeError("Persistent inference worker was not started")
+        if not self._ready.wait(timeout=timeout_sec):
+            raise RuntimeError(
+                f"Timed out waiting for persistent worker ({timeout_sec:.0f}s). "
+                "Check /health persistent_worker_ready and retry."
+            )
+        if self._init_error:
+            raise RuntimeError(self._init_error)
+        if not self.is_ready:
+            raise RuntimeError("Persistent inference worker is not ready")
+
     def start(self, *, load_timeout_sec: float) -> None:
         with self._lock:
             if self._started:

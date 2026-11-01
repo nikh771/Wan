@@ -45,8 +45,12 @@ class JobRecord:
 
     def to_dict(self, *, base_url: str = "") -> dict[str, Any]:
         video_url = None
+        progress_url = None
+        base = base_url.rstrip("/")
+        if base:
+            progress_url = f"{base}/jobs/{self.job_id}/progress"
         if self.status == "completed" and self.video_path:
-            video_url = f"{base_url.rstrip('/')}/jobs/{self.job_id}/video"
+            video_url = f"{base}/jobs/{self.job_id}/video"
         return {
             "job_id": self.job_id,
             "status": self.status,
@@ -58,8 +62,28 @@ class JobRecord:
             "recent_logs": list(self.recent_logs),
             "error": self.error,
             "video_url": video_url,
+            "progress_url": progress_url,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
+        }
+
+    def to_progress_dict(self, *, base_url: str = "") -> dict[str, Any]:
+        """Minimal payload for polling a single job by id."""
+        video_url = None
+        base = base_url.rstrip("/")
+        if self.status == "completed" and self.video_path and base:
+            video_url = f"{base}/jobs/{self.job_id}/video"
+        return {
+            "job_id": self.job_id,
+            "status": self.status,
+            "progress": self.progress,
+            "stage": self.stage,
+            "message": self.message,
+            "inference_step": self.inference_step,
+            "inference_total_steps": self.inference_total_steps,
+            "error": self.error,
+            "video_url": video_url,
+            "done": self.status in ("completed", "failed"),
         }
 
 
@@ -125,7 +149,10 @@ class JobManager:
             record.inference_total_steps = parsed.total_steps
         elif line.startswith("[wan_service]"):
             record.stage = "booting"
-            if "Warm worker" in line:
+            if "Waiting for warm worker" in line:
+                record.message = "Waiting for startup model load (avoiding duplicate GPU load)…"
+                record.progress = max(record.progress or 0, 10)
+            elif "Warm worker" in line:
                 record.message = "Running on warm worker (models already loaded)…"
                 record.progress = max(record.progress or 0, 30)
             else:

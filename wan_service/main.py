@@ -11,9 +11,15 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+import re
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+from wan_service.utils.job_ids import require_job_id
 
 from wan_service.core.config import settings
 from wan_service.core.logging import configure_logging, get_logger
@@ -21,6 +27,25 @@ from wan_service.core.runtime import evaluate_inference_readiness
 from wan_service.routers import api_router
 
 logger = get_logger(__name__)
+
+_JOB_PATH_RE = re.compile(r"^/jobs/([^/]+)(?:/progress|/video)?/?$")
+
+
+class RejectInvalidJobPollMiddleware(BaseHTTPMiddleware):
+    """Return 400 before auth/routes for bad job ids (stops browser poll loops)."""
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method != "GET":
+            return await call_next(request)
+        match = _JOB_PATH_RE.match(request.url.path)
+        if not match:
+            return await call_next(request)
+        raw_id = match.group(1)
+        try:
+            require_job_id(raw_id)
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+        return await call_next(request)
 
 
 @asynccontextmanager
@@ -74,10 +99,22 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
     )
+    application.add_middleware(RejectInvalidJobPollMiddleware)
     application.include_router(api_router)
 
     static_dir = Path(__file__).resolve().parent / "static"
     if static_dir.is_dir():
+        job_loader = static_dir / "job_loader.html"
+
+        @application.get("/ui/job_loader.html", include_in_schema=False)
+        def _job_loader_html() -> Response:
+            body = job_loader.read_bytes()
+            return Response(
+                content=body,
+                media_type="text/html; charset=utf-8",
+                headers={"Cache-Control": "no-store"},
+            )
+
         application.mount("/ui", StaticFiles(directory=str(static_dir), html=True), name="ui")
 
         @application.get("/", include_in_schema=False)

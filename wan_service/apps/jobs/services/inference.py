@@ -151,14 +151,31 @@ def run_wan_inference(
                 on_log_line=on_log_line,
             )
             return
+        if worker.is_loading:
+            logger.info(
+                "Persistent worker still loading; waiting for job %s (no generate.py fallback)",
+                job_id,
+            )
+            if on_log_line is not None:
+                on_log_line(
+                    "[wan_service] Waiting for warm worker to finish loading (one model on GPU)…"
+                )
+            worker.wait_until_ready(timeout_sec=cfg.WAN_WORKER_LOAD_TIMEOUT_SEC)
+            worker.run_job(
+                job_id=job_id,
+                image_path=image_path,
+                prompt=prompt,
+                output_mp4=output_mp4,
+                size=size,
+                sample_steps=cfg.WAN_INFERENCE_SAMPLE_STEPS,
+                frame_num=frame_num,
+                on_log_line=on_log_line,
+            )
+            return
         if worker.init_error:
             logger.warning(
                 "Persistent worker unavailable (%s); falling back to generate.py",
                 worker.init_error,
-            )
-        else:
-            logger.warning(
-                "Persistent worker still loading; falling back to generate.py for this job"
             )
 
     cmd: list[str] = [

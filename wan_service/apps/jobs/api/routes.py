@@ -12,6 +12,7 @@ from wan_service import config as service_config
 from wan_service.apps.jobs.services.manager import job_manager
 from wan_service.core.runtime import evaluate_inference_readiness
 from wan_service.utils.auth import require_worker_auth
+from wan_service.utils.job_ids import require_job_id
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -69,19 +70,45 @@ async def create_job(
     return record.to_dict(base_url=base)
 
 
-@router.get("/{job_id}")
-def get_job(job_id: str, request: Request, _: None = Depends(require_worker_auth)):
+def _job_not_found(job_id: str) -> HTTPException:
+    return HTTPException(
+        status_code=404,
+        detail={
+            "message": "Job not found",
+            "job_id": job_id,
+            "revoke_polling": True,
+        },
+    )
+
+
+@router.get("/{job_id}/progress")
+def get_job_progress(job_id: str, request: Request):
+    """Poll job status with only the job id (Bearer or ?api_key=)."""
+    job_id = require_job_id(job_id)
+    require_worker_auth(request)
     record = job_manager.get(job_id)
     if not record:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise _job_not_found(job_id)
+    return record.to_progress_dict(base_url=str(request.base_url).rstrip("/"))
+
+
+@router.get("/{job_id}")
+def get_job(job_id: str, request: Request):
+    job_id = require_job_id(job_id)
+    require_worker_auth(request)
+    record = job_manager.get(job_id)
+    if not record:
+        raise _job_not_found(job_id)
     return record.to_dict(base_url=str(request.base_url).rstrip("/"))
 
 
 @router.get("/{job_id}/video")
-def get_job_video(job_id: str, _: None = Depends(require_worker_auth)):
+def get_job_video(job_id: str, request: Request):
+    job_id = require_job_id(job_id)
+    require_worker_auth(request)
     record = job_manager.get(job_id)
     if not record:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise _job_not_found(job_id)
     if record.status != "completed" or not record.video_path:
         raise HTTPException(status_code=404, detail="Video not ready")
     path = Path(record.video_path).resolve()
