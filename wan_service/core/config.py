@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     WAN_GPU_ONLY_MIN_VRAM_GB: float = 24.0
     WAN_CUDA_DEVICE: str = "0"
 
+    # Keep TI2V weights loaded in a background worker (faster from job 2 onward).
+    WAN_PERSISTENT_INFERENCE: bool = True
+    # Max seconds to wait for the worker to finish loading checkpoints on startup.
+    WAN_WORKER_LOAD_TIMEOUT_SEC: float = 900.0
+
     @field_validator("WAN_RUNTIME_MODE", mode="before")
     @classmethod
     def normalize_runtime_mode(cls, value: str) -> str:

@@ -7,9 +7,13 @@ Run from repository root:
 
 from __future__ import annotations
 
+import threading
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from wan_service.core.config import settings
 from wan_service.core.logging import configure_logging, get_logger
@@ -30,7 +34,36 @@ async def lifespan(_app: FastAPI):
         state.runtime_mode,
         state.ready,
     )
-    yield
+    if (
+        settings.WAN_PERSISTENT_INFERENCE
+        and settings.resolved_runtime_mode() == "linux_cuda"
+        and state.ready
+    ):
+        from wan_service.apps.jobs.services.persistent_worker import (
+            get_persistent_worker,
+            shutdown_persistent_worker,
+        )
+
+        worker = get_persistent_worker()
+        threading.Thread(
+            target=worker.start,
+            kwargs={"load_timeout_sec": settings.WAN_WORKER_LOAD_TIMEOUT_SEC},
+            daemon=True,
+            name="wan-persistent-worker-boot",
+        ).start()
+        logger.info(
+            "Persistent inference worker loading in background (timeout=%ss)",
+            settings.WAN_WORKER_LOAD_TIMEOUT_SEC,
+        )
+    try:
+        yield
+    finally:
+        if settings.WAN_PERSISTENT_INFERENCE:
+            from wan_service.apps.jobs.services.persistent_worker import (
+                shutdown_persistent_worker,
+            )
+
+            shutdown_persistent_worker()
 
 
 def create_app() -> FastAPI:
@@ -42,6 +75,15 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
     application.include_router(api_router)
+
+    static_dir = Path(__file__).resolve().parent / "static"
+    if static_dir.is_dir():
+        application.mount("/ui", StaticFiles(directory=str(static_dir), html=True), name="ui")
+
+        @application.get("/", include_in_schema=False)
+        def _root_redirect() -> RedirectResponse:
+            return RedirectResponse(url="/ui/job_loader.html")
+
     return application
 
 

@@ -6,6 +6,7 @@ import logging
 import shutil
 import threading
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 
 from wan_service import config as service_config
 from wan_service.apps.jobs.services.inference import run_wan_inference
+from wan_service.apps.jobs.services.progress_parser import parse_wan_generate_line
 from wan_service.core.runtime import assert_inference_available
 from wan_service.utils.ffmpeg import trim_video_to_duration, validate_output_mp4
 
@@ -28,6 +30,10 @@ class JobRecord:
     job_id: str
     status: str = "pending"
     progress: int | None = None
+    stage: str = "queued"
+    message: str | None = None
+    inference_step: int | None = None
+    inference_total_steps: int | None = None
     error: str | None = None
     prompt: str = ""
     duration_seconds: float | None = None
@@ -35,6 +41,7 @@ class JobRecord:
     updated_at: datetime = field(default_factory=_utc_now)
     video_path: Path | None = None
     work_dir: Path | None = None
+    recent_logs: deque[str] = field(default_factory=lambda: deque(maxlen=40))
 
     def to_dict(self, *, base_url: str = "") -> dict[str, Any]:
         video_url = None
@@ -44,6 +51,11 @@ class JobRecord:
             "job_id": self.job_id,
             "status": self.status,
             "progress": self.progress,
+            "stage": self.stage,
+            "message": self.message,
+            "inference_step": self.inference_step,
+            "inference_total_steps": self.inference_total_steps,
+            "recent_logs": list(self.recent_logs),
             "error": self.error,
             "video_url": video_url,
             "created_at": self.created_at.isoformat(),
@@ -69,6 +81,9 @@ class JobManager:
             record = JobRecord(
                 job_id=job_id,
                 status="pending",
+                stage="queued",
+                message="Waiting in queue…",
+                progress=0,
                 prompt=prompt,
                 duration_seconds=duration_seconds,
                 work_dir=work_dir,
@@ -99,39 +114,86 @@ class JobManager:
                 self._active = None
             self._drain_queue()
 
+    def _apply_log_line(self, record: JobRecord, line: str) -> None:
+        record.recent_logs.append(line)
+        parsed = parse_wan_generate_line(line)
+        if parsed is not None:
+            record.stage = parsed.stage
+            record.message = parsed.message
+            record.progress = parsed.progress
+            record.inference_step = parsed.current_step
+            record.inference_total_steps = parsed.total_steps
+        elif line.startswith("[wan_service]"):
+            record.stage = "booting"
+            if "Warm worker" in line:
+                record.message = "Running on warm worker (models already loaded)…"
+                record.progress = max(record.progress or 0, 30)
+            else:
+                record.message = "Starting inference subprocess…"
+                record.progress = max(record.progress or 0, 12)
+        record.updated_at = _utc_now()
+
     def _run_job(self, job_id: str) -> None:
         record = self._jobs.get(job_id)
         if not record or not record.work_dir:
             return
-        record.status = "running"
-        record.progress = 10
-        record.updated_at = _utc_now()
+        with self._lock:
+            record.status = "running"
+            record.stage = "booting"
+            record.message = "Preparing job…"
+            record.progress = 8
+            record.updated_at = _utc_now()
         image_path = record.work_dir / "input.png"
         raw_out = record.work_dir / "output_raw.mp4"
         final_out = record.work_dir / "output.mp4"
+
+        def on_log_line(line: str) -> None:
+            with self._lock:
+                self._apply_log_line(record, line)
+
         try:
             assert_inference_available()
             if not image_path.exists():
                 raise FileNotFoundError("Input image missing for job.")
-            record.progress = 20
-            run_wan_inference(image_path=image_path, prompt=record.prompt, output_mp4=raw_out)
-            record.progress = 85
+            with self._lock:
+                record.progress = max(record.progress or 0, 15)
+                record.message = "Running inference…"
+                record.updated_at = _utc_now()
+            run_wan_inference(
+                job_id=job_id,
+                image_path=image_path,
+                prompt=record.prompt,
+                output_mp4=raw_out,
+                on_log_line=on_log_line,
+            )
+            with self._lock:
+                record.stage = "postprocessing"
+                record.message = "Finalizing video (trim / validate)…"
+                record.progress = 92
+                record.updated_at = _utc_now()
             if record.duration_seconds and record.duration_seconds > 0:
                 trim_video_to_duration(raw_out, final_out, float(record.duration_seconds))
             else:
                 shutil.copy2(raw_out, final_out)
             validate_output_mp4(final_out)
-            record.video_path = final_out
-            record.status = "completed"
-            record.progress = 100
-            record.error = None
+            with self._lock:
+                record.video_path = final_out
+                record.status = "completed"
+                record.stage = "completed"
+                record.message = "Video ready"
+                record.progress = 100
+                record.error = None
+                record.updated_at = _utc_now()
         except Exception as exc:  # noqa: BLE001
             logger.exception("Job %s failed", job_id)
-            record.status = "failed"
-            record.error = str(exc)[:2000]
-            record.progress = None
+            with self._lock:
+                record.status = "failed"
+                record.stage = "failed"
+                record.message = "Job failed"
+                record.error = str(exc)[:2000]
+                record.progress = None
+                record.updated_at = _utc_now()
             self._cleanup_failed(record)
-        record.updated_at = _utc_now()
 
     @staticmethod
     def _cleanup_failed(record: JobRecord) -> None:

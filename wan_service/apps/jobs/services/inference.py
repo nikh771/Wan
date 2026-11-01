@@ -7,6 +7,7 @@ import os
 import subprocess
 import threading
 from collections import deque
+from collections.abc import Callable
 from pathlib import Path
 
 from PIL import Image
@@ -62,8 +63,11 @@ def _inference_env(*, repo: Path, gpu_only: bool) -> dict[str, str]:
     if cfg.WAN_INFERENCE_FORCE_GPU_ONLY:
         env["WAN_INFERENCE_FORCE_GPU_ONLY"] = "true"
     env["CUDA_VISIBLE_DEVICES"] = cfg.WAN_CUDA_DEVICE.strip() or "0"
-    prefix = str(repo)
-    env["PYTHONPATH"] = prefix + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    roots = [str(cfg.project_root), str(repo)]
+    existing = env.get("PYTHONPATH")
+    if existing:
+        roots.append(existing)
+    env["PYTHONPATH"] = os.pathsep.join(roots)
     if not gpu_only and not env.get("PYTORCH_CUDA_ALLOC_CONF"):
         env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     for key in list(env.keys()):
@@ -74,7 +78,11 @@ def _inference_env(*, repo: Path, gpu_only: bool) -> dict[str, str]:
     return env
 
 
-def _stream_subprocess_output(process: subprocess.Popen[str]) -> deque[str]:
+def _stream_subprocess_output(
+    process: subprocess.Popen[str],
+    *,
+    on_log_line: Callable[[str], None] | None = None,
+) -> deque[str]:
     assert process.stdout is not None
     tail: deque[str] = deque(maxlen=_LOG_TAIL_LINES)
 
@@ -83,6 +91,8 @@ def _stream_subprocess_output(process: subprocess.Popen[str]) -> deque[str]:
             stripped = line.rstrip()
             tail.append(stripped)
             logger.info("[wan generate] %s", stripped)
+            if on_log_line is not None:
+                on_log_line(stripped)
 
     thread = threading.Thread(target=_reader, daemon=True)
     thread.start()
@@ -93,9 +103,11 @@ def _stream_subprocess_output(process: subprocess.Popen[str]) -> deque[str]:
 
 def run_wan_inference(
     *,
+    job_id: str = "local",
     image_path: Path,
     prompt: str,
     output_mp4: Path,
+    on_log_line: Callable[[str], None] | None = None,
 ) -> None:
     cfg = get_settings()
     script = cfg.wan_generate_script
@@ -110,6 +122,44 @@ def run_wan_inference(
     output_mp4.parent.mkdir(parents=True, exist_ok=True)
     size = select_wan_size(image_path)
     gpu_only, gpu_mode_reason = resolve_gpu_only_inference()
+
+    frame_num = cfg.WAN_INFERENCE_FRAME_NUM
+    if frame_num is not None and (frame_num <= 0 or (frame_num - 1) % 4 != 0):
+        raise ValueError(
+            f"WAN_INFERENCE_FRAME_NUM must be 4n+1 (got {frame_num}); e.g. 49, 81, 121"
+        )
+
+    if cfg.WAN_PERSISTENT_INFERENCE and cfg.resolved_inference_backend() == "linux_cuda":
+        from wan_service.apps.jobs.services.persistent_worker import get_persistent_worker
+
+        worker = get_persistent_worker()
+        if worker.is_ready:
+            logger.info(
+                "Using persistent inference worker for job %s (gpu_only=%s, %s)",
+                job_id,
+                gpu_only,
+                gpu_mode_reason,
+            )
+            worker.run_job(
+                job_id=job_id,
+                image_path=image_path,
+                prompt=prompt,
+                output_mp4=output_mp4,
+                size=size,
+                sample_steps=cfg.WAN_INFERENCE_SAMPLE_STEPS,
+                frame_num=frame_num,
+                on_log_line=on_log_line,
+            )
+            return
+        if worker.init_error:
+            logger.warning(
+                "Persistent worker unavailable (%s); falling back to generate.py",
+                worker.init_error,
+            )
+        else:
+            logger.warning(
+                "Persistent worker still loading; falling back to generate.py for this job"
+            )
 
     cmd: list[str] = [
         cfg.WAN_PYTHON,
@@ -137,12 +187,7 @@ def run_wan_inference(
 
     if cfg.WAN_INFERENCE_SAMPLE_STEPS is not None:
         cmd.extend(["--sample_steps", str(cfg.WAN_INFERENCE_SAMPLE_STEPS)])
-    if cfg.WAN_INFERENCE_FRAME_NUM is not None:
-        frame_num = cfg.WAN_INFERENCE_FRAME_NUM
-        if frame_num <= 0 or (frame_num - 1) % 4 != 0:
-            raise ValueError(
-                f"WAN_INFERENCE_FRAME_NUM must be 4n+1 (got {frame_num}); e.g. 49, 81, 121"
-            )
+    if frame_num is not None:
         cmd.extend(["--frame_num", str(frame_num)])
 
     env = _inference_env(repo=repo, gpu_only=gpu_only)
@@ -159,6 +204,10 @@ def run_wan_inference(
         gpu_mode_reason,
         env["CUDA_VISIBLE_DEVICES"],
     )
+    if on_log_line is not None:
+        on_log_line(
+            f"[wan_service] Spawning generate.py (gpu_only={gpu_only}, size={size})"
+        )
     process = subprocess.Popen(
         cmd,
         cwd=str(repo),
@@ -168,7 +217,7 @@ def run_wan_inference(
         env=env,
         start_new_session=True,
     )
-    log_tail = _stream_subprocess_output(process)
+    log_tail = _stream_subprocess_output(process, on_log_line=on_log_line)
 
     if process.returncode != 0:
         detail = "\n".join(log_tail) if log_tail else "(no subprocess output captured)"

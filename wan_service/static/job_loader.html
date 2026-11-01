@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wan Job Loader</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1117;
+      --panel: #1a1d27;
+      --border: #2a3142;
+      --text: #e8ecf4;
+      --muted: #9aa3b5;
+      --accent: #6c9eff;
+      --accent-dim: #3d5a99;
+      --ok: #3dd68c;
+      --err: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #1a2440 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 0.25rem; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.35rem; }
+    input[type="text"], input[type="password"], input[type="number"], input[type="file"] {
+      width: 100%;
+      background: #12151e;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.55rem 0.65rem;
+      margin-bottom: 0.75rem;
+    }
+    textarea {
+      width: 100%;
+      min-height: 72px;
+      background: #12151e;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.55rem 0.65rem;
+      margin-bottom: 0.75rem;
+      resize: vertical;
+    }
+    button {
+      background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end; }
+    .row > * { flex: 1; min-width: 140px; }
+    .progress-track {
+      height: 10px;
+      background: #12151e;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      margin: 0.75rem 0 0.5rem;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent-dim), var(--accent), #9eb8ff);
+      transition: width 0.35s ease;
+    }
+    .meta { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.85rem; }
+    .stage {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      background: #12151e;
+      border: 1px solid var(--border);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .stage.running { color: var(--accent); border-color: var(--accent-dim); }
+    .stage.completed { color: var(--ok); border-color: #2a6b4f; }
+    .stage.failed { color: var(--err); border-color: #7a3030; }
+    #message { color: var(--text); margin-top: 0.35rem; min-height: 1.25rem; }
+    #logs {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.72rem;
+      line-height: 1.45;
+      background: #0c0e14;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem;
+      max-height: 220px;
+      overflow: auto;
+      white-space: pre-wrap;
+      color: #b8c0d4;
+    }
+    video {
+      width: 100%;
+      border-radius: 10px;
+      margin-top: 0.75rem;
+      background: #000;
+      border: 1px solid var(--border);
+    }
+    .hidden { display: none; }
+    .err { color: var(--err); font-size: 0.85rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Wan video job loader</h1>
+    <p class="sub">Submit a job or paste a job ID to watch live progress from <code>generate.py</code>.</p>
+
+    <div class="panel">
+      <label for="baseUrl">API base URL</label>
+      <input id="baseUrl" type="text" placeholder="http://127.0.0.1:8080" />
+
+      <label for="apiKey">API key (Bearer token)</label>
+      <input id="apiKey" type="password" placeholder="WAN_WORKER_API_KEY" autocomplete="off" />
+
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt" placeholder="Describe the motion…"></textarea>
+
+      <div class="row">
+        <div>
+          <label for="duration">Duration (seconds)</label>
+          <input id="duration" type="number" value="5" min="0.1" max="60" step="0.1" />
+        </div>
+        <div>
+          <label for="image">Image</label>
+          <input id="image" type="file" accept="image/png,image/jpeg,image/webp" />
+        </div>
+      </div>
+
+      <button type="button" id="submitBtn">Start generation</button>
+      <p id="formErr" class="err hidden"></p>
+    </div>
+
+    <div class="panel hidden" id="watchPanel">
+      <div class="meta">
+        <div>
+          <span class="stage" id="stageBadge">queued</span>
+          <span id="jobIdLabel" style="margin-left:0.5rem;color:var(--muted);font-size:0.8rem;"></span>
+        </div>
+        <div id="pctLabel">0%</div>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div id="message">Waiting…</div>
+      <div id="stepDetail" style="color:var(--muted);font-size:0.8rem;margin-top:0.25rem;"></div>
+      <pre id="logs"></pre>
+      <video id="player" class="hidden" controls playsinline></video>
+      <p id="jobErr" class="err hidden"></p>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = "wan_job_loader_settings";
+
+    const els = {
+      baseUrl: document.getElementById("baseUrl"),
+      apiKey: document.getElementById("apiKey"),
+      prompt: document.getElementById("prompt"),
+      duration: document.getElementById("duration"),
+      image: document.getElementById("image"),
+      submitBtn: document.getElementById("submitBtn"),
+      formErr: document.getElementById("formErr"),
+      watchPanel: document.getElementById("watchPanel"),
+      stageBadge: document.getElementById("stageBadge"),
+      jobIdLabel: document.getElementById("jobIdLabel"),
+      pctLabel: document.getElementById("pctLabel"),
+      progressFill: document.getElementById("progressFill"),
+      message: document.getElementById("message"),
+      stepDetail: document.getElementById("stepDetail"),
+      logs: document.getElementById("logs"),
+      player: document.getElementById("player"),
+      jobErr: document.getElementById("jobErr"),
+    };
+
+    let pollTimer = null;
+    let activeJobId = null;
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const s = JSON.parse(raw);
+        if (s.baseUrl) els.baseUrl.value = s.baseUrl;
+        if (s.apiKey) els.apiKey.value = s.apiKey;
+      } catch (_) {}
+      if (!els.baseUrl.value) {
+        els.baseUrl.value = window.location.origin.replace(/\/ui\/?$/, "");
+      }
+    }
+
+    function saveSettings() {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ baseUrl: els.baseUrl.value.trim(), apiKey: els.apiKey.value })
+      );
+    }
+
+    function headers() {
+      const h = {};
+      const key = els.apiKey.value.trim();
+      if (key) h["Authorization"] = "Bearer " + key;
+      return h;
+    }
+
+    function showFormError(msg) {
+      els.formErr.textContent = msg;
+      els.formErr.classList.toggle("hidden", !msg);
+    }
+
+    function showJobError(msg) {
+      els.jobErr.textContent = msg;
+      els.jobErr.classList.toggle("hidden", !msg);
+    }
+
+    function renderJob(data) {
+      els.watchPanel.classList.remove("hidden");
+      const pct = data.progress ?? 0;
+      els.progressFill.style.width = Math.min(100, Math.max(0, pct)) + "%";
+      els.pctLabel.textContent = (data.progress == null ? "—" : pct + "%");
+      els.stageBadge.textContent = data.stage || data.status || "unknown";
+      els.stageBadge.className = "stage " + (data.status || "");
+      els.message.textContent = data.message || data.status || "Processing…";
+      if (data.inference_step != null && data.inference_total_steps != null) {
+        els.stepDetail.textContent =
+          "Diffusion step " + data.inference_step + " / " + data.inference_total_steps;
+      } else {
+        els.stepDetail.textContent = "";
+      }
+      if (Array.isArray(data.recent_logs) && data.recent_logs.length) {
+        els.logs.textContent = data.recent_logs.join("\n");
+        els.logs.scrollTop = els.logs.scrollHeight;
+      }
+      if (data.status === "completed" && data.video_url) {
+        els.player.classList.remove("hidden");
+        if (els.player.dataset.src !== data.video_url) {
+          els.player.dataset.src = data.video_url;
+          loadVideoAuthed(data.video_url);
+        }
+      }
+      if (data.status === "failed") {
+        showJobError(data.error || "Job failed");
+        stopPolling();
+      }
+      if (data.status === "completed") {
+        stopPolling();
+      }
+    }
+
+    async function loadVideoAuthed(url) {
+      try {
+        const res = await fetch(url, { headers: headers() });
+        if (!res.ok) throw new Error("Video download failed: " + res.status);
+        const blob = await res.blob();
+        if (els.player._objectUrl) URL.revokeObjectURL(els.player._objectUrl);
+        els.player._objectUrl = URL.createObjectURL(blob);
+        els.player.src = els.player._objectUrl;
+      } catch (e) {
+        showJobError(String(e));
+      }
+    }
+
+    async function fetchJob(jobId) {
+      const base = els.baseUrl.value.replace(/\/$/, "");
+      const res = await fetch(base + "/jobs/" + encodeURIComponent(jobId), { headers: headers() });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(res.status + " " + body);
+      }
+      return res.json();
+    }
+
+    function startPolling(jobId) {
+      stopPolling();
+      activeJobId = jobId;
+      els.jobIdLabel.textContent = jobId;
+      showJobError("");
+      els.player.classList.add("hidden");
+      els.player.removeAttribute("src");
+
+      const tick = async () => {
+        try {
+          const data = await fetchJob(jobId);
+          renderJob(data);
+        } catch (e) {
+          showJobError(String(e));
+        }
+      };
+      tick();
+      pollTimer = setInterval(tick, 800);
+    }
+
+    function stopPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = null;
+    }
+
+    els.submitBtn.addEventListener("click", async () => {
+      saveSettings();
+      showFormError("");
+      const base = els.baseUrl.value.replace(/\/$/, "");
+      const file = els.image.files && els.image.files[0];
+      const prompt = els.prompt.value.trim();
+      if (!file) {
+        showFormError("Choose an image.");
+        return;
+      }
+      if (!prompt) {
+        showFormError("Enter a prompt.");
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append("image", file);
+      fd.append("prompt", prompt);
+      fd.append("duration_seconds", String(els.duration.value || "5"));
+
+      els.submitBtn.disabled = true;
+      try {
+        const res = await fetch(base + "/jobs", { method: "POST", headers: headers(), body: fd });
+        if (!res.ok) {
+          const body = await res.text();
+          throw new Error(res.status + " " + body);
+        }
+        const data = await res.json();
+        const params = new URLSearchParams(window.location.search);
+        params.set("job_id", data.job_id);
+        history.replaceState(null, "", "?" + params.toString());
+        startPolling(data.job_id);
+      } catch (e) {
+        showFormError(String(e));
+      } finally {
+        els.submitBtn.disabled = false;
+      }
+    });
+
+    loadSettings();
+    const params = new URLSearchParams(window.location.search);
+    const watchId = params.get("job_id");
+    if (watchId) {
+      startPolling(watchId);
+    }
+  </script>
+</body>
+</html>

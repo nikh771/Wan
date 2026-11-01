@@ -171,6 +171,33 @@ def evaluate_inference_readiness() -> InferenceReadiness:
     )
 
 
+def _persistent_worker_health() -> dict[str, Any]:
+    settings = get_settings()
+    if not settings.WAN_PERSISTENT_INFERENCE:
+        return {
+            "persistent_inference_enabled": False,
+            "persistent_worker_ready": None,
+            "persistent_worker_error": None,
+        }
+    try:
+        from wan_service.apps.jobs.services.persistent_worker import (
+            get_persistent_worker,
+        )
+
+        worker = get_persistent_worker()
+        return {
+            "persistent_inference_enabled": True,
+            "persistent_worker_ready": worker.is_ready,
+            "persistent_worker_error": worker.init_error,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "persistent_inference_enabled": True,
+            "persistent_worker_ready": False,
+            "persistent_worker_error": str(exc),
+        }
+
+
 def health_payload() -> dict[str, Any]:
     settings = get_settings()
     state = evaluate_inference_readiness()
@@ -201,6 +228,7 @@ def health_payload() -> dict[str, Any]:
         # Deprecated alias — never treat MPS as CUDA
         "gpu_available": state.cuda.available,
         "gpu_detail": state.cuda.detail,
+        **_persistent_worker_health(),
     }
 
 

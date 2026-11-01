@@ -229,7 +229,13 @@ curl http://127.0.0.1:8080/health
 
 The health response reports API availability, inference readiness, CUDA availability, checkpoint detection, and other runtime checks.
 
+When `WAN_PERSISTENT_INFERENCE=true` (default), the API also starts a **background worker** that loads TI2V-5B once. Check `persistent_worker_ready` in `/health` — after it is `true`, new jobs skip reloading checkpoints and usually start diffusion much sooner. The first job submitted while the worker is still loading falls back to one-shot `generate.py` automatically.
+
 A healthy API does not guarantee that every generation request will fit into available GPU memory.
+
+### Live job loader (browser UI)
+
+With the API running, open **`http://127.0.0.1:8080/ui/job_loader.html`** (or **`/`**, which redirects there). Enter your `WAN_WORKER_API_KEY`, submit an image and prompt, and watch **real-time progress** parsed from `generate.py` logs (model load → diffusion steps → save). Poll the job API about every 800ms; share a link with `?job_id=…` to monitor an in-flight job.
 
 ## 9. Generate a Video
 
@@ -253,6 +259,8 @@ Replace `JOB_ID` with the returned ID:
 curl http://127.0.0.1:8080/jobs/JOB_ID \
   -H "Authorization: Bearer $WAN_WORKER_API_KEY"
 ```
+
+The JSON includes `stage`, `message`, `progress` (0–100), optional `inference_step` / `inference_total_steps`, and `recent_logs` while the job is running.
 
 ### Retrieve the generated video
 
