@@ -201,8 +201,12 @@ def _persistent_worker_health() -> dict[str, Any]:
 def health_payload() -> dict[str, Any]:
     settings = get_settings()
     state = evaluate_inference_readiness()
+    engines = _engines_health()
+    any_engine_ready = any(
+        engines.get(f"engine_{name}_ready") for name in ("wan", "ltx", "storyboard")
+    )
     api_ok = True
-    status = "ok" if state.ready else "degraded"
+    status = "ok" if (state.ready or any_engine_ready) else "degraded"
     return {
         "status": status,
         "api_available": api_ok,
@@ -229,7 +233,21 @@ def health_payload() -> dict[str, Any]:
         "gpu_available": state.cuda.available,
         "gpu_detail": state.cuda.detail,
         **_persistent_worker_health(),
+        **_engines_health(),
     }
+
+
+def _engines_health() -> dict[str, Any]:
+    from wan_service.apps.jobs.services.engine_dispatch import (
+        evaluate_engine_readiness,
+    )
+
+    out: dict[str, Any] = {}
+    for name in ("wan", "ltx", "storyboard"):
+        state = evaluate_engine_readiness(name)  # type: ignore[arg-type]
+        out[f"engine_{name}_ready"] = state.ready
+        out[f"engine_{name}_reason"] = None if state.ready else state.public_reason
+    return out
 
 
 def assert_inference_available() -> None:
