@@ -1,0 +1,17 @@
+# LTX-Video 2B isolated environment (do NOT install into Wan venv).
+#
+#   python3 -m venv venv_ltx
+#   source venv_ltx/bin/activate
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+#   git clone https://github.com/Lightricks/LTX-Video.git third_party/LTX-Video
+#   cd third_party/LTX-Video && pip install -e ".[inference]"
+#   pip install -r ../../requirements-ltx-gpu.txt
+#
+# Set in .env:
+#   LTX_PYTHON=venv_ltx/bin/python
+#   LTX_REPO_DIR=third_party/LTX-Video
+
+# Service-side deps are only needed if the API runs in this venv (usually use venv for API + venv_ltx for jobs).
+fastapi>=0.115.0
+pydantic-settings>=2.0.0
+Pillow>=10.0.0

@@ -1,0 +1,12 @@
+# Storyboard engine host (CPU-friendly API + renderer deps).
+# Does NOT install Wan/Torch/CUDA stacks.
+#
+#   python3 -m venv venv
+#   source venv/bin/activate
+#   pip install -r requirements-storyboard.txt
+
+-r requirements.txt
+
+# Storyboard renderer (also listed in requirements.txt for full installs)
+opencv-python>=4.9.0.80
+numpy>=1.23.5,<2
