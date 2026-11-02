@@ -135,8 +135,18 @@
       <label for="apiKey">API key (Bearer token)</label>
       <input id="apiKey" type="password" placeholder="WAN_WORKER_API_KEY" autocomplete="off" />
 
+      <label for="engineType">Engine</label>
+      <select id="engineType" style="width:100%;margin-bottom:0.75rem;padding:0.55rem;border-radius:8px;background:#12151e;color:#e8ecf4;border:1px solid #2a3142;">
+        <option value="wan" selected>Wan TI2V-5B (GPU diffusion)</option>
+        <option value="ltx">LTX-Video 2B (GPU diffusion)</option>
+        <option value="storyboard">Storyboard (pan / zoom, CPU)</option>
+      </select>
+
       <label for="prompt">Prompt</label>
       <textarea id="prompt" placeholder="Describe the motion…"></textarea>
+
+      <label for="negativePrompt">Negative prompt (LTX optional)</label>
+      <input id="negativePrompt" type="text" placeholder="deformed hands, extra fingers" />
 
       <div class="row">
         <div>
@@ -176,7 +186,9 @@
     const els = {
       baseUrl: document.getElementById("baseUrl"),
       apiKey: document.getElementById("apiKey"),
+      engineType: document.getElementById("engineType"),
       prompt: document.getElementById("prompt"),
+      negativePrompt: document.getElementById("negativePrompt"),
       duration: document.getElementById("duration"),
       image: document.getElementById("image"),
       submitBtn: document.getElementById("submitBtn"),
@@ -333,7 +345,10 @@
       const fd = new FormData();
       fd.append("image", file);
       fd.append("prompt", prompt);
+      fd.append("engine_type", els.engineType.value || "wan");
       fd.append("duration_seconds", String(els.duration.value || "5"));
+      const neg = els.negativePrompt.value.trim();
+      if (neg) fd.append("negative_prompt", neg);
 
       els.submitBtn.disabled = true;
       try {

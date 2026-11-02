@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any
 
 from wan_service import config as service_config
-from wan_service.apps.jobs.services.inference import run_wan_inference
+from wan_service.apps.jobs.services.engine_dispatch import assert_engine_available, run_engine
 from wan_service.apps.jobs.services.progress_parser import parse_wan_generate_line
-from wan_service.core.runtime import assert_inference_available
+from wan_service.engines.types import EngineType, GenerationJobParams
 from wan_service.utils.ffmpeg import trim_video_to_duration, validate_output_mp4
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,14 @@ class JobRecord:
     inference_total_steps: int | None = None
     error: str | None = None
     prompt: str = ""
+    engine_type: EngineType = "wan"
+    engine_requested: EngineType = "wan"
+    engine_used: str | None = None
+    negative_prompt: str | None = None
+    width: int | None = None
+    height: int | None = None
+    fps: int = 24
+    generation_metadata: dict | None = None
     duration_seconds: float | None = None
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = field(default_factory=_utc_now)
@@ -57,6 +65,10 @@ class JobRecord:
             "inference_total_steps": self.inference_total_steps,
             "recent_logs": list(self.recent_logs),
             "error": self.error,
+            "engine_type": self.engine_type,
+            "engine_requested": self.engine_requested,
+            "engine_used": self.engine_used,
+            "generation_metadata": self.generation_metadata,
             "video_url": video_url,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
@@ -71,11 +83,21 @@ class JobManager:
         self._active: str | None = None
         service_config.JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
-    def create_job(self, *, prompt: str, duration_seconds: float | None) -> JobRecord:
+    def create_job(
+        self,
+        *,
+        prompt: str,
+        duration_seconds: float | None,
+        engine_type: EngineType = "wan",
+        negative_prompt: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        fps: int | None = None,
+    ) -> JobRecord:
         with self._lock:
             if len(self._queue) + (1 if self._active else 0) >= service_config.MAX_QUEUE_SIZE:
                 raise RuntimeError("Job queue is full. Try again later.")
-            job_id = f"wan_{uuid.uuid4().hex[:16]}"
+            job_id = f"{engine_type}_{uuid.uuid4().hex[:16]}"
             work_dir = service_config.JOBS_DIR / job_id
             work_dir.mkdir(parents=True, exist_ok=True)
             record = JobRecord(
@@ -85,6 +107,12 @@ class JobManager:
                 message="Waiting in queue…",
                 progress=0,
                 prompt=prompt,
+                engine_type=engine_type,
+                engine_requested=engine_type,
+                negative_prompt=negative_prompt,
+                width=width,
+                height=height,
+                fps=fps or 24,
                 duration_seconds=duration_seconds,
                 work_dir=work_dir,
             )
@@ -123,11 +151,18 @@ class JobManager:
             record.progress = parsed.progress
             record.inference_step = parsed.current_step
             record.inference_total_steps = parsed.total_steps
-        elif line.startswith("[wan_service]"):
+        elif line.startswith("[storyboard]"):
+            record.stage = "rendering"
+            record.message = line.replace("[storyboard]", "").strip() or "Rendering…"
+            record.progress = max(record.progress or 0, 40)
+        elif line.startswith("[ltx]") or line.startswith("[wan_service]"):
             record.stage = "booting"
             if "Warm worker" in line:
                 record.message = "Running on warm worker (models already loaded)…"
                 record.progress = max(record.progress or 0, 30)
+            elif "LTX" in line:
+                record.message = "Starting LTX worker…"
+                record.progress = max(record.progress or 0, 18)
             else:
                 record.message = "Starting inference subprocess…"
                 record.progress = max(record.progress or 0, 12)
@@ -152,20 +187,29 @@ class JobManager:
                 self._apply_log_line(record, line)
 
         try:
-            assert_inference_available()
+            assert_engine_available(record.engine_type)
             if not image_path.exists():
                 raise FileNotFoundError("Input image missing for job.")
             with self._lock:
                 record.progress = max(record.progress or 0, 15)
-                record.message = "Running inference…"
+                record.message = f"Running {record.engine_type} engine…"
                 record.updated_at = _utc_now()
-            run_wan_inference(
+            params = GenerationJobParams(
                 job_id=job_id,
                 image_path=image_path,
                 prompt=record.prompt,
                 output_mp4=raw_out,
+                duration_seconds=record.duration_seconds,
+                negative_prompt=record.negative_prompt,
+                width=record.width,
+                height=record.height,
+                fps=record.fps,
                 on_log_line=on_log_line,
             )
+            meta = run_engine(params, record.engine_type)
+            with self._lock:
+                record.engine_used = str(meta.get("engine_used", record.engine_type))
+                record.generation_metadata = meta
             with self._lock:
                 record.stage = "postprocessing"
                 record.message = "Finalizing video (trim / validate)…"

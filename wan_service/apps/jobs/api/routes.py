@@ -10,7 +10,10 @@ from fastapi.responses import FileResponse
 
 from wan_service import config as service_config
 from wan_service.apps.jobs.services.manager import job_manager
-from wan_service.core.runtime import evaluate_inference_readiness
+from wan_service.apps.jobs.services.engine_dispatch import (
+    evaluate_engine_readiness,
+    normalize_engine,
+)
 from wan_service.utils.auth import require_worker_auth
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -24,6 +27,11 @@ async def create_job(
     image: UploadFile = File(...),
     prompt: str = Form(...),
     duration_seconds: float = Form(5.0),
+    engine_type: str = Form("wan"),
+    negative_prompt: str | None = Form(None),
+    width: int | None = Form(None),
+    height: int | None = Form(None),
+    fps: int | None = Form(None),
     _: None = Depends(require_worker_auth),
 ):
     if not prompt or not prompt.strip():
@@ -37,7 +45,15 @@ async def create_job(
     if content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=415, detail="Unsupported image type")
 
-    readiness = evaluate_inference_readiness()
+    try:
+        engine = normalize_engine(engine_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if negative_prompt and len(negative_prompt) > service_config.MAX_PROMPT_CHARS:
+        raise HTTPException(status_code=400, detail="negative_prompt too long")
+
+    readiness = evaluate_engine_readiness(engine)
     if not readiness.ready:
         raise HTTPException(status_code=503, detail=readiness.public_reason)
 
@@ -48,7 +64,15 @@ async def create_job(
         raise HTTPException(status_code=400, detail="Empty image")
 
     try:
-        record = job_manager.create_job(prompt=prompt.strip(), duration_seconds=duration_seconds)
+        record = job_manager.create_job(
+            prompt=prompt.strip(),
+            duration_seconds=duration_seconds,
+            engine_type=engine,
+            negative_prompt=negative_prompt.strip() if negative_prompt else None,
+            width=width,
+            height=height,
+            fps=fps,
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

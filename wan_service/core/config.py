@@ -70,6 +70,15 @@ class Settings(BaseSettings):
     # Max seconds to wait for the worker to finish loading checkpoints on startup.
     WAN_WORKER_LOAD_TIMEOUT_SEC: float = 900.0
 
+    # LTX-Video 2B (separate venv — see requirements-ltx-gpu.txt)
+    LTX_PYTHON: str = ""
+    LTX_REPO_DIR: str = str(PROJECT_ROOT / "third_party" / "LTX-Video")
+    LTX_CKPT_DIR: str = ""
+    LTX_PIPELINE_CONFIG: str = "configs/ltxv-2b-0.9.6-dev.yaml"
+
+    # Storyboard defaults when width/height omitted on create-job
+    STORYBOARD_DEFAULT_FPS: int = 24
+
     @field_validator("WAN_RUNTIME_MODE", mode="before")
     @classmethod
     def normalize_runtime_mode(cls, value: str) -> str:
@@ -128,6 +137,21 @@ class Settings(BaseSettings):
         if self.WAN_GENERATE_SCRIPT.strip():
             return self._resolve_path(self.WAN_GENERATE_SCRIPT)
         return self.wan_repo_dir / "generate.py"
+
+    @property
+    def ltx_repo_dir(self) -> Path:
+        return self._resolve_path(self.LTX_REPO_DIR)
+
+    @property
+    def ltx_ckpt_dir(self) -> Path:
+        if self.LTX_CKPT_DIR.strip():
+            return self._resolve_path(self.LTX_CKPT_DIR)
+        return self.ltx_repo_dir
+
+    def resolved_ltx_python(self) -> str:
+        if self.LTX_PYTHON.strip():
+            return self.LTX_PYTHON.strip()
+        return self.WAN_PYTHON
 
     @property
     def jobs_dir(self) -> Path:
