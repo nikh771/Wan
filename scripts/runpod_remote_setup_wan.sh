@@ -5,6 +5,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
+export ROOT
+bash "${ROOT}/scripts/gpu_setup_clean_disk.sh"
 
 echo "==> Wan engine setup | project root: ${ROOT}"
 
@@ -41,7 +43,6 @@ python3 -m venv venv
 # shellcheck disable=SC1091
 source venv/bin/activate
 python -m pip install --upgrade pip
-pip cache purge 2>/dev/null || true
 
 echo "==> Installing requirements-gpu.txt..."
 python -m pip install -r requirements-gpu.txt

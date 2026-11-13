@@ -21,6 +21,9 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
+export ROOT
+bash "${ROOT}/scripts/gpu_setup_clean_disk.sh"
+
 COGX_VENV="${ROOT}/cogvideox_service/engines/cogvideox-env"
 MODEL_DIR="${ROOT}/cogvideox_service/models/cogvideox/CogVideoX-2b"
 LTX_VENV="${ROOT}/ltx_service/engines/ltx-env"

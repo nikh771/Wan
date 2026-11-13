@@ -91,6 +91,8 @@ python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', to
 **Automated core + Wan on RunPod:** `bash scripts/runpod_remote_setup.sh wan`  
 **Dispatcher:** `bash scripts/runpod_remote_setup.sh [wan|ltx|cogvideox]`
 
+GPU setup scripts run **`scripts/gpu_setup_clean_disk.sh` first** (pip/HF/torch caches, apt clean). Skip with `GPU_SETUP_SKIP_DISK_CLEAN=1`. Force fresh venvs with `GPU_SETUP_REBUILD_VENVS=1`.
+
 ### 2.3 Core configuration (`.env`)
 
 ```bash

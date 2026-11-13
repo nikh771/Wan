@@ -9,6 +9,9 @@ export HF_HUB_ENABLE_HF_TRANSFER=0
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
+export ROOT
+bash "${ROOT}/scripts/gpu_setup_clean_disk.sh"
+
 LTX_DIR="${ROOT}/ltx_service/third_party/LTX-Video"
 LTX_VENV="${ROOT}/ltx_service/engines/ltx-env"
 MODEL_DIR="${ROOT}/ltx_service/models/ltx"
