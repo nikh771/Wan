@@ -4,7 +4,6 @@
 #   bash scripts/runpod_remote_setup.sh wan
 #   bash scripts/runpod_remote_setup.sh ltx
 #   bash scripts/runpod_remote_setup.sh cogvideox
-#   bash scripts/runpod_remote_setup.sh storyboard
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,11 +19,8 @@ case "${ENGINE}" in
   cogvideox|cogx|cog)
     exec bash "${ROOT}/scripts/runpod_remote_setup_cogvideox.sh"
     ;;
-  storyboard)
-    exec bash "${ROOT}/scripts/runpod_remote_setup_storyboard.sh"
-    ;;
   *)
-    echo "Usage: $0 [wan|ltx|cogvideox|storyboard]"
+    echo "Usage: $0 [wan|ltx|cogvideox]"
     exit 1
     ;;
 esac

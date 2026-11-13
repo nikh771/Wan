@@ -18,13 +18,12 @@ No Page Analysis service lives in this repo; prompts are passed on create-job.
 
 ## New components (this phase)
 
-- `engine_type` on create-job (`wan` \| `ltx` \| `storyboard`)
+- `engine_type` on create-job (`wan` \| `ltx` \| `cogvideox`)
 - `wan_service/engine_service.py` — thin wrapper over `run_wan_inference`
 - `ltx_service/` — LTX engine (config, adapter, runner, health, `engine_service.py`)
-- `storyboard_service/` — CPU renderer + `engine_service.py`
+- `cogvideox_service/` — CogVideoX engine (same pattern)
 - `core/engine_dispatch.py` — readiness + dispatch
 - `ltx_service/worker_main.py` — LTX_PYTHON subprocess entry (official repo on `PYTHONPATH`)
-- `storyboard_service/renderer.py` — Stage 1 camera motion
 - Split requirements + RunPod setup scripts per engine
 
 Deferred (later phases): hybrid router, per-shot jobs, fallback chain, video normalizer for merger.
@@ -40,7 +39,7 @@ Deferred (later phases): hybrid router, per-shot jobs, fallback chain, video nor
 |--------|-------------|------|
 | Wan | `venv` + `requirements-gpu.txt` + flash-attn | Heavy torch stack |
 | LTX | `ltx_service/engines/ltx-env` + `ltx_service/requirements-gpu.txt` | Different torch/diffusers pins — **do not merge into Wan venv** |
-| Storyboard | `venv` + `requirements-storyboard.txt` | CPU-friendly; shares API deps only |
+| CogVideoX | `cogvideox_service/engines/cogvideox-env` | Isolated env like LTX |
 
 Do not load Wan and LTX weights in the same process.
 
@@ -48,4 +47,4 @@ Do not load Wan and LTX weights in the same process.
 
 - Wan TI2V-5B: ~14–24+ GB VRAM typical
 - LTX 2B: lighter but still GPU; run in separate process, unload after job
-- Storyboard: no diffusion GPU use
+- CogVideoX 2B: memory-offload mode on ~24GB cards

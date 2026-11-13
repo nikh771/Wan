@@ -26,12 +26,6 @@ class LtxSettings(BaseSettings):
     LTX_CKPT_DIR: str = ""
     LTX_PIPELINE_CONFIG: str = "configs/ltxv-2b-0.9.6-distilled.yaml"
 
-    # Pre-job prompt rewrite (Ollama). Falls back to cinematic template if Ollama is down.
-    LTX_PROMPT_ENHANCE: bool = True
-    LTX_OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
-    LTX_OLLAMA_MODEL: str = "llama3.2:3b"
-    LTX_OLLAMA_TIMEOUT_SEC: float = 60.0
-
     # I2V motion knobs (passed into upstream InferenceConfig).
     # Distilled 2B locks hard at strength≈1; lower strength + higher noise unlocks motion.
     LTX_CONDITIONING_STRENGTH: float = 0.7

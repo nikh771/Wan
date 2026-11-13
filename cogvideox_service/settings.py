@@ -33,6 +33,7 @@ class CogVideoXSettings(BaseSettings):
     COGVIDEOX_DEFAULT_GUIDANCE_SCALE: float = 6.0
     COGVIDEOX_DEFAULT_SEED: int = 12345
     COGVIDEOX_DEFAULT_DURATION_SECONDS: float = 6.125
+    COGVIDEOX_CHUNK_SECONDS: float = 10.0
 
     @property
     def project_root(self) -> Path:

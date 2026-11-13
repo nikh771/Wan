@@ -13,9 +13,11 @@ from pathlib import Path
 from typing import Any
 
 from wan_service import config as service_config
-from wan_service.apps.jobs.services.engine_dispatch import assert_engine_available, run_engine
+from video_generation.engines import assert_engine_available, run_engine
 from wan_service.apps.jobs.services.progress_parser import parse_wan_generate_line
 from core.types import EngineType, GenerationJobParams
+from video_generation.estimates import estimate_remaining_seconds
+from video_generation.progress_hub import progress_hub
 from wan_service.utils.ffmpeg import trim_video_to_duration, validate_output_mp4
 
 logger = logging.getLogger(__name__)
@@ -47,6 +49,8 @@ class JobRecord:
     ltx_mode: str | None = None
     seed: int | None = None
     duration_seconds: float | None = None
+    estimated_total_seconds: float | None = None
+    started_running_at: datetime | None = None
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = field(default_factory=_utc_now)
     video_path: Path | None = None
@@ -58,9 +62,9 @@ class JobRecord:
         progress_url = None
         base = base_url.rstrip("/")
         if base:
-            progress_url = f"{base}/jobs/{self.job_id}/progress"
+            progress_url = f"{base}/video/jobs/{self.job_id}"
         if self.status == "completed" and self.video_path:
-            video_url = f"{base}/jobs/{self.job_id}/video"
+            video_url = f"{base}/video/jobs/{self.job_id}/video"
         return {
             "job_id": self.job_id,
             "status": self.status,
@@ -79,14 +83,30 @@ class JobRecord:
             "progress_url": progress_url,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
+            "estimated_total_seconds": self.estimated_total_seconds,
+            "estimated_remaining_seconds": self._estimated_remaining(),
         }
+
+    def _elapsed_seconds(self) -> float:
+        if self.started_running_at is None:
+            return 0.0
+        return (datetime.now(timezone.utc) - self.started_running_at).total_seconds()
+
+    def _estimated_remaining(self) -> float | None:
+        if self.estimated_total_seconds is None:
+            return None
+        return estimate_remaining_seconds(
+            estimated_total_seconds=self.estimated_total_seconds,
+            progress_percent=self.progress,
+            elapsed_seconds=self._elapsed_seconds(),
+        )
 
     def to_progress_dict(self, *, base_url: str = "") -> dict[str, Any]:
         """Minimal payload for polling a single job by id."""
         video_url = None
         base = base_url.rstrip("/")
         if self.status == "completed" and self.video_path and base:
-            video_url = f"{base}/jobs/{self.job_id}/video"
+            video_url = f"{base}/video/jobs/{self.job_id}/video"
         return {
             "job_id": self.job_id,
             "status": self.status,
@@ -98,7 +118,15 @@ class JobRecord:
             "error": self.error,
             "video_url": video_url,
             "done": self.status in ("completed", "failed"),
+            "estimated_total_seconds": self.estimated_total_seconds,
+            "estimated_remaining_seconds": self._estimated_remaining(),
         }
+
+    def to_ws_event(self, *, base_url: str = "") -> dict[str, Any]:
+        payload = self.to_progress_dict(base_url=base_url)
+        payload["type"] = "progress"
+        payload["engine_type"] = self.engine_type
+        return payload
 
 
 class JobManager:
@@ -121,6 +149,7 @@ class JobManager:
         fps: int | None = None,
         ltx_mode: str | None = None,
         seed: int | None = None,
+        estimated_total_seconds: float | None = None,
     ) -> JobRecord:
         with self._lock:
             if len(self._queue) + (1 if self._active else 0) >= service_config.MAX_QUEUE_SIZE:
@@ -144,6 +173,7 @@ class JobManager:
                 ltx_mode=ltx_mode,
                 seed=seed,
                 duration_seconds=duration_seconds,
+                estimated_total_seconds=estimated_total_seconds,
                 work_dir=work_dir,
             )
             self._jobs[job_id] = record
@@ -181,10 +211,6 @@ class JobManager:
             record.progress = parsed.progress
             record.inference_step = parsed.current_step
             record.inference_total_steps = parsed.total_steps
-        elif line.startswith("[storyboard]"):
-            record.stage = "rendering"
-            record.message = line.replace("[storyboard]", "").strip() or "Rendering…"
-            record.progress = max(record.progress or 0, 40)
         elif (
             line.startswith("[ltx]")
             or line.startswith("[cogvideox]")
@@ -228,6 +254,7 @@ class JobManager:
                 record.message = "Starting inference subprocess…"
                 record.progress = max(record.progress or 0, 12)
         record.updated_at = _utc_now()
+        progress_hub.publish(record.job_id, record.to_ws_event())
 
     def _run_job(self, job_id: str) -> None:
         record = self._jobs.get(job_id)
@@ -238,7 +265,9 @@ class JobManager:
             record.stage = "booting"
             record.message = "Preparing job…"
             record.progress = 8
+            record.started_running_at = _utc_now()
             record.updated_at = _utc_now()
+        progress_hub.publish(job_id, record.to_ws_event())
         image_path = record.work_dir / "input.png"
         raw_out = record.work_dir / "output_raw.mp4"
         final_out = record.work_dir / "output.mp4"
@@ -260,7 +289,7 @@ class JobManager:
                 raise ValueError("mode must be text_to_video or image_to_video")
             if record.engine_type == "cogvideox" and mode != "text_to_video":
                 raise ValueError("CogVideoX POC supports text_to_video only")
-            needs_image = mode == "image_to_video" or record.engine_type == "storyboard"
+            needs_image = mode == "image_to_video"
             if needs_image and not image_path.exists():
                 raise FileNotFoundError("Input image missing for job.")
             with self._lock:
@@ -303,6 +332,7 @@ class JobManager:
                 record.progress = 100
                 record.error = None
                 record.updated_at = _utc_now()
+            progress_hub.publish(job_id, record.to_ws_event())
         except Exception as exc:  # noqa: BLE001
             logger.exception("Job %s failed", job_id)
             with self._lock:
@@ -312,6 +342,7 @@ class JobManager:
                 record.error = str(exc)[:2000]
                 record.progress = None
                 record.updated_at = _utc_now()
+            progress_hub.publish(job_id, record.to_ws_event())
             self._cleanup_failed(record)
 
     @staticmethod

@@ -139,7 +139,6 @@
       <select id="engineType" style="width:100%;margin-bottom:0.75rem;padding:0.55rem;border-radius:8px;background:#12151e;color:#e8ecf4;border:1px solid #2a3142;">
         <option value="wan" selected>Wan TI2V-5B (GPU diffusion)</option>
         <option value="ltx">LTX-Video 2B (GPU diffusion)</option>
-        <option value="storyboard">Storyboard (pan / zoom, CPU)</option>
       </select>
 
       <label for="prompt">Prompt</label>
@@ -315,7 +314,7 @@
     async function fetchJob(jobId) {
       const base = els.baseUrl.value.replace(/\/$/, "");
       const res = await fetch(
-        base + "/jobs/" + encodeURIComponent(jobId) + "/progress",
+        base + "/video/jobs/" + encodeURIComponent(jobId),
         { headers: headers() }
       );
       if (!res.ok) {
@@ -386,6 +385,7 @@
       const fd = new FormData();
       fd.append("image", file);
       fd.append("prompt", prompt);
+      fd.append("mode", "i2v");
       fd.append("engine_type", els.engineType.value || "wan");
       fd.append("duration_seconds", String(els.duration.value || "5"));
       const neg = els.negativePrompt.value.trim();
@@ -393,7 +393,7 @@
 
       els.submitBtn.disabled = true;
       try {
-        const res = await fetch(base + "/jobs", { method: "POST", headers: headers(), body: fd });
+        const res = await fetch(base + "/video/generate", { method: "POST", headers: headers(), body: fd });
         if (!res.ok) {
           const body = await res.text();
           throw new Error(res.status + " " + body);

@@ -34,7 +34,7 @@ python3 -m venv venv
 # shellcheck disable=SC1091
 source venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements-storyboard.txt
+python -m pip install -r requirements.txt
 
 echo "==> LTX isolated env at ltx_service/engines/ltx-env ..."
 python3 -m venv "${LTX_VENV}"

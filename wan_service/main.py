@@ -28,7 +28,9 @@ from wan_service.routers import api_router
 
 logger = get_logger(__name__)
 
-_JOB_PATH_RE = re.compile(r"^/jobs/([^/]+)(?:/progress|/video)?/?$")
+_JOB_PATH_RE = re.compile(
+    r"^/(?:jobs|video/jobs|video/ws)/([^/]+)(?:/progress|/video)?/?$"
+)
 
 
 class RejectInvalidJobPollMiddleware(BaseHTTPMiddleware):
@@ -50,6 +52,11 @@ class RejectInvalidJobPollMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    import asyncio
+
+    from video_generation.progress_hub import progress_hub
+
+    progress_hub.register_loop(asyncio.get_running_loop())
     configure_logging(settings.LOG_LEVEL)
     state = evaluate_inference_readiness()
     logger.info(

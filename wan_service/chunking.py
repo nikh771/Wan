@@ -1,14 +1,13 @@
-"""Wan TI2V chunk planning: ~5s single pass, longer videos as chained I2V segments."""
+"""Wan TI2V chunk planning: ~10s single pass, longer videos as chained I2V segments."""
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 
-# Official TI2V default (~5.04s at 24fps). Must be 4n+1.
-DEFAULT_CHUNK_SECONDS = 5.0
+# ~10s at 24fps (4n+1). Chained via last-frame I2V for continuity.
+DEFAULT_CHUNK_SECONDS = 10.0
 DEFAULT_FPS = 24
-DEFAULT_CHUNK_FRAMES = 121
 
 
 @dataclass(frozen=True)
@@ -20,6 +19,8 @@ class WanChunkPlan:
     num_chunks: int
     single_pass: bool
     chunk_actual_duration_seconds: float
+    last_chunk_duration_seconds: float
+    last_chunk_frames: int
 
 
 def align_wan_frame_count(raw_frames: int) -> int:
@@ -47,37 +48,52 @@ def plan_wan_chunks(
 ) -> WanChunkPlan:
     if duration_seconds <= 0:
         raise ValueError("duration_seconds must be positive")
-    if fps <= 0:
-        raise ValueError("fps must be positive")
     if chunk_seconds <= 0:
         raise ValueError("chunk_seconds must be positive")
 
-    frames_per_chunk = frames_for_duration(min(duration_seconds, chunk_seconds), fps)
-    # Prefer the canonical 5s TI2V length when the request is at/above one chunk.
-    if duration_seconds >= chunk_seconds:
-        frames_per_chunk = max(frames_per_chunk, DEFAULT_CHUNK_FRAMES)
-        # Keep 4n+1 if DEFAULT_CHUNK_FRAMES already is.
-        frames_per_chunk = align_wan_frame_count(frames_per_chunk)
-
-    chunk_actual = frames_per_chunk / float(fps)
     if duration_seconds <= chunk_seconds:
+        frames = frames_for_duration(duration_seconds, fps)
+        actual = frames / float(fps)
         return WanChunkPlan(
             duration_seconds=duration_seconds,
             fps=fps,
             chunk_seconds=chunk_seconds,
-            frames_per_chunk=frames_per_chunk,
+            frames_per_chunk=frames,
             num_chunks=1,
             single_pass=True,
-            chunk_actual_duration_seconds=chunk_actual,
+            chunk_actual_duration_seconds=actual,
+            last_chunk_duration_seconds=actual,
+            last_chunk_frames=frames,
         )
 
     num_chunks = int(math.ceil(duration_seconds / chunk_seconds))
+    full_frames = frames_for_duration(chunk_seconds, fps)
+    full_actual = full_frames / float(fps)
+    remainder = duration_seconds - (num_chunks - 1) * chunk_seconds
+    remainder = max(remainder, 1.0 / fps)
+    last_frames = frames_for_duration(remainder, fps)
+    last_actual = last_frames / float(fps)
+
     return WanChunkPlan(
         duration_seconds=duration_seconds,
         fps=fps,
         chunk_seconds=chunk_seconds,
-        frames_per_chunk=frames_per_chunk,
+        frames_per_chunk=full_frames,
         num_chunks=num_chunks,
         single_pass=False,
-        chunk_actual_duration_seconds=chunk_actual,
+        chunk_actual_duration_seconds=full_actual,
+        last_chunk_duration_seconds=last_actual,
+        last_chunk_frames=last_frames,
     )
+
+
+def chunk_duration_seconds(plan: WanChunkPlan, index: int) -> float:
+    if index == plan.num_chunks - 1:
+        return plan.last_chunk_duration_seconds
+    return plan.chunk_actual_duration_seconds
+
+
+def chunk_frame_count(plan: WanChunkPlan, index: int) -> int:
+    if index == plan.num_chunks - 1:
+        return plan.last_chunk_frames
+    return plan.frames_per_chunk

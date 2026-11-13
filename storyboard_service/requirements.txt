@@ -1,4 +1,0 @@
-# Storyboard engine (CPU). See also root requirements-storyboard.txt.
--r ../requirements.txt
-opencv-python>=4.9.0.80
-numpy>=1.23.5,<2

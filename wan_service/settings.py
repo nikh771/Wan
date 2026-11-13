@@ -42,6 +42,7 @@ class WanSettings(BaseSettings):
     WAN_CUDA_DEVICE: str = "0"
     WAN_PERSISTENT_INFERENCE: bool = True
     WAN_WORKER_LOAD_TIMEOUT_SEC: float = 900.0
+    WAN_CHUNK_SECONDS: float = 10.0
 
     @field_validator("WAN_RUNTIME_MODE", mode="before")
     @classmethod

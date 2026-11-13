@@ -32,20 +32,11 @@ bash scripts/download_ltx_pixart_text_encoder.sh
 
 On GPUs with under 30GB VRAM (e.g. RTX A5000), the worker keeps the T5 encoder on CPU (`offload_to_cpu`) and disables Florence/Llama prompt enhancement so create+generate fit in memory. Keep `WAN_PERSISTENT_INFERENCE=false` when swapping Wan/LTX on one GPU.
 
-## Prompt enhance (Ollama)
+## I2V motion (distilled 2B)
 
-Before the GPU worker starts, the API rewrites prompts with **Ollama** (free/local):
-
-```bash
-bash scripts/setup_ollama_ltx_prompts.sh
-```
-
-Env: `LTX_PROMPT_ENHANCE=true`, `LTX_OLLAMA_BASE_URL`, `LTX_OLLAMA_MODEL=llama3.2:3b`. Calls use `num_gpu=0` and `keep_alive=0`. If Ollama is unreachable, a cinematic motion fallback still rewrites the prompt.
-
-I2V motion (distilled 2B):
 - `LTX_CONDITIONING_STRENGTH=0.7`, `LTX_IMAGE_COND_NOISE_SCALE=0.5`
-- Ollama prompts demand large obvious motion (not subtle drifts)
 - `LTX_MOTION_AMPLIFY=2.4` post-boosts deviation from the first frame so motion reads clearly (set `1.0` to disable)
+- Send final prompts from your upstream service; this API does not rewrite prompts.
 
 ## Long jobs (chunk queue)
 

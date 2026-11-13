@@ -16,6 +16,7 @@ from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 
+from core.chunk_cleanup import cleanup_generation_artifacts
 from core.types import GenerationJobParams
 from ltx_service.chunking import (
     chunk_duration_seconds,
@@ -25,7 +26,6 @@ from ltx_service.config import (
     calculate_ltx_frame_count,
     normalize_ltx_resolution,
 )
-from ltx_service.prompt_enhance import enhance_ltx_prompt
 from ltx_service.settings import get_ltx_settings
 
 logger = logging.getLogger(__name__)
@@ -236,24 +236,12 @@ def run_ltx_generation(params: GenerationJobParams) -> dict:
         chunk_seconds=float(cfg.LTX_CHUNK_SECONDS),
     )
     res = normalize_ltx_resolution(width, height)
-
-    enhanced = enhance_ltx_prompt(
-        params.prompt,
-        mode=mode,  # type: ignore[arg-type]
-        duration_seconds=duration,
-        negative_prompt=params.negative_prompt or cfg.LTX_DEFAULT_NEGATIVE_PROMPT,
-        enabled=cfg.LTX_PROMPT_ENHANCE,
-        ollama_base_url=cfg.LTX_OLLAMA_BASE_URL,
-        ollama_model=cfg.LTX_OLLAMA_MODEL,
-        ollama_timeout_sec=cfg.LTX_OLLAMA_TIMEOUT_SEC,
+    prompt = (params.prompt or "").strip()
+    if not prompt:
+        raise ValueError("prompt is required")
+    negative_prompt = (
+        (params.negative_prompt or "").strip() or cfg.LTX_DEFAULT_NEGATIVE_PROMPT
     )
-    if params.on_log_line:
-        params.on_log_line(
-            f"[ltx_service] prompt enhance source={enhanced.source} "
-            f"original={enhanced.original_prompt[:100]!r}"
-        )
-        if enhanced.prompt != enhanced.original_prompt:
-            params.on_log_line(f"[ltx_service] enhanced prompt={enhanced.prompt[:240]!r}")
 
     work_dir = params.output_mp4.parent
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -273,8 +261,8 @@ def run_ltx_generation(params: GenerationJobParams) -> dict:
 
         result = _run_worker_chunk(
             mode=mode,
-            prompt=enhanced.prompt,
-            negative_prompt=enhanced.negative_prompt,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
             output_mp4=params.output_mp4,
             width=res.width,
             height=res.height,
@@ -290,9 +278,6 @@ def run_ltx_generation(params: GenerationJobParams) -> dict:
         trimmed = _trim_chunk_freeze(
             params.output_mp4, is_last_chunk=True, on_log_line=params.on_log_line
         )
-        result.setdefault("prompt_enhance_source", enhanced.source)
-        result.setdefault("original_prompt", enhanced.original_prompt)
-        result.setdefault("enhanced_prompt", enhanced.prompt)
         result["chunks"] = 1
         result["chunked"] = False
         if amplify is not None:
@@ -310,6 +295,7 @@ def run_ltx_generation(params: GenerationJobParams) -> dict:
         )
 
     chunk_paths: list[Path] = []
+    bridge_paths: list[Path] = []
     chunk_metas: list[dict] = []
     # Continuity reference: user image for I2V chunk 0; last frame of prior chunk thereafter.
     bridge: Path | None = params.image_path if mode == "image_to_video" else None
@@ -333,8 +319,7 @@ def run_ltx_generation(params: GenerationJobParams) -> dict:
         ):
             raise ValueError("image_to_video chunk requires a reference image")
 
-        # Same cinematic prompt for every chunk — quality stays consistent.
-        chunk_prompt = enhanced.prompt
+        chunk_prompt = prompt
         chunk_seed = seed + i
         is_continuation = i > 0
         # Continuation: lock harder to previous last frame (less noise/drift).
@@ -365,7 +350,7 @@ def run_ltx_generation(params: GenerationJobParams) -> dict:
         meta = _run_worker_chunk(
             mode=chunk_mode,
             prompt=chunk_prompt,
-            negative_prompt=enhanced.negative_prompt,
+            negative_prompt=negative_prompt,
             output_mp4=chunk_out,
             width=res.width,
             height=res.height,
@@ -405,6 +390,7 @@ def run_ltx_generation(params: GenerationJobParams) -> dict:
 
             bridge = work_dir / f"ltx_bridge_{i + 1:02d}.png"
             extract_last_frame(chunk_out, bridge)
+            bridge_paths.append(bridge)
             if params.on_log_line:
                 params.on_log_line(
                     f"[ltx_service] Bridge last-frame for chunk {i + 2}: {bridge.name}"
@@ -422,6 +408,11 @@ def run_ltx_generation(params: GenerationJobParams) -> dict:
         skip_first_frame_after_first=True,
         fps=fps,
     )
+    removed = cleanup_generation_artifacts(chunk_paths, bridge_paths)
+    if params.on_log_line:
+        params.on_log_line(
+            f"[ltx_service] Removed {len(removed)} intermediate chunk/bridge file(s)"
+        )
 
     return {
         "engine": "ltx",
@@ -429,7 +420,7 @@ def run_ltx_generation(params: GenerationJobParams) -> dict:
         "chunks": plan.num_chunks,
         "chunked": True,
         "chunk_seconds": plan.chunk_seconds,
-        "chunk_files": [p.name for p in chunk_paths],
+        "removed_intermediates": removed,
         "frames_per_chunk": plan.frames_per_chunk,
         "last_chunk_frames": plan.last_chunk_frames,
         "duration_seconds": duration,
@@ -439,8 +430,6 @@ def run_ltx_generation(params: GenerationJobParams) -> dict:
         "seed": seed,
         "status": "completed",
         "output_path": str(params.output_mp4),
-        "prompt_enhance_source": enhanced.source,
-        "original_prompt": enhanced.original_prompt,
-        "enhanced_prompt": enhanced.prompt,
+        "prompt": prompt,
         "chunk_results": chunk_metas,
     }

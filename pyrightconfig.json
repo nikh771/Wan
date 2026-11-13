@@ -1,5 +1,5 @@
 {
-  "include": ["core", "wan_service", "ltx_service", "storyboard_service", "tests", "wan_service/third_party/Wan2.2"],
+  "include": ["core", "wan_service", "ltx_service", "cogvideox_service", "video_generation", "tests", "wan_service/third_party/Wan2.2"],
   "exclude": [
     "**/.venv",
     "**/__pycache__",

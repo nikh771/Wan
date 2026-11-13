@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-EngineType = Literal["wan", "ltx", "cogvideox", "storyboard"]
+EngineType = Literal["wan", "ltx", "cogvideox"]
 VideoMode = Literal["text_to_video", "image_to_video"]
 LtxMode = VideoMode  # backward-compatible alias
 

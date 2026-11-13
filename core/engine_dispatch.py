@@ -1,4 +1,4 @@
-"""Route generation jobs to Wan, LTX, CogVideoX, or Storyboard."""
+"""Route generation jobs to Wan, LTX, or CogVideoX."""
 
 from __future__ import annotations
 
@@ -10,8 +10,7 @@ from core.config import get_settings
 from core.types import EngineType, GenerationJobParams
 from cogvideox_service.engine_service import run_cogvideox_engine
 from ltx_service.engine_service import run_ltx_engine
-from storyboard_service.engine_service import run_storyboard_engine
-from wan_service.core.runtime import evaluate_inference_readiness, probe_ffmpeg
+from wan_service.core.runtime import evaluate_inference_readiness
 from wan_service.engine_service import run_wan_engine
 
 
@@ -23,10 +22,10 @@ class EngineReadiness:
 
 def normalize_engine(value: str) -> EngineType:
     engine = (value or "wan").strip().lower()
-    if engine in ("wan", "ltx", "cogvideox", "storyboard"):
+    if engine in ("wan", "ltx", "cogvideox"):
         return engine  # type: ignore[return-value]
     raise ValueError(
-        f"Unsupported engine_type {value!r}. Use wan, ltx, cogvideox, or storyboard."
+        f"Unsupported engine_type {value!r}. Use wan, ltx, or cogvideox."
     )
 
 
@@ -62,22 +61,6 @@ def evaluate_engine_readiness(engine: EngineType) -> EngineReadiness:
     if engine == "wan":
         state = evaluate_inference_readiness()
         return EngineReadiness(state.ready, state.public_reason)
-
-    if engine == "storyboard":
-        if not probe_ffmpeg():
-            return EngineReadiness(
-                False,
-                "FFmpeg/ffprobe required for storyboard rendering.",
-            )
-        try:
-            import cv2  # noqa: F401
-            from PIL import Image  # noqa: F401
-        except ImportError:
-            return EngineReadiness(
-                False,
-                "Storyboard requires opencv-python and Pillow in the API venv.",
-            )
-        return EngineReadiness(True, "Storyboard engine ready.")
 
     if engine == "cogvideox":
         py = _cogvideox_python_executable()
@@ -133,10 +116,6 @@ def run_engine(params: GenerationJobParams, engine: EngineType) -> dict:
             meta.setdefault("engine_used", "wan")
             return meta
         return {"engine": "wan", "engine_used": "wan"}
-    if engine == "storyboard":
-        meta = run_storyboard_engine(params)
-        meta["engine_used"] = "storyboard"
-        return meta
     if engine == "cogvideox":
         meta = run_cogvideox_engine(params)
         meta["engine_used"] = "cogvideox"

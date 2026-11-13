@@ -32,8 +32,6 @@ class AppSettings(BaseSettings):
     FFMPEG_BINARY: str = "ffmpeg"
     FFPROBE_BINARY: str = "ffprobe"
 
-    STORYBOARD_DEFAULT_FPS: int = 24
-
     @property
     def project_root(self) -> Path:
         return REPO_ROOT

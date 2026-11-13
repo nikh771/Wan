@@ -32,8 +32,6 @@ def _resolve_video_mode(
     ltx_mode: str | None,
 ) -> str | None:
     raw = (task or ltx_mode or "").strip().lower()
-    if engine == "storyboard":
-        return None
     if not raw:
         # CogVideoX POC is T2V-only; default other engines to I2V for backward compat.
         return "text_to_video" if engine == "cogvideox" else "image_to_video"
@@ -85,7 +83,7 @@ async def create_job(
         raise HTTPException(status_code=400, detail="negative_prompt too long")
 
     mode = _resolve_video_mode(engine=engine, task=task, ltx_mode=ltx_mode)
-    needs_image = engine == "storyboard" or mode == "image_to_video"
+    needs_image = mode == "image_to_video"
     if needs_image and image is None:
         raise HTTPException(status_code=400, detail="image is required for this engine/mode")
     if image is not None:

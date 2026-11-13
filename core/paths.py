@@ -8,4 +8,3 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 WAN_SERVICE_ROOT = REPO_ROOT / "wan_service"
 LTX_SERVICE_ROOT = REPO_ROOT / "ltx_service"
 COGVIDEOX_SERVICE_ROOT = REPO_ROOT / "cogvideox_service"
-STORYBOARD_SERVICE_ROOT = REPO_ROOT / "storyboard_service"
