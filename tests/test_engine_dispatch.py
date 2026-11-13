@@ -17,6 +17,11 @@ def test_normalize_engine_ltx_storyboard() -> None:
     assert normalize_engine("storyboard") == "storyboard"
 
 
+def test_normalize_engine_cogvideox() -> None:
+    assert normalize_engine("cogvideox") == "cogvideox"
+    assert normalize_engine("  CogVideoX ") == "cogvideox"
+
+
 def test_normalize_engine_rejects_hybrid_for_now() -> None:
     with pytest.raises(ValueError, match="Unsupported"):
         normalize_engine("hybrid")

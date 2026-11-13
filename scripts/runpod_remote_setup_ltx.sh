@@ -3,6 +3,10 @@
 #   bash scripts/runpod_remote_setup_ltx.sh
 set -euo pipefail
 
+# Avoid empty/partial HF downloads when hf_transfer is enabled but not installed.
+unset HF_HUB_ENABLE_HF_TRANSFER
+export HF_HUB_ENABLE_HF_TRANSFER=0
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 LTX_DIR="${ROOT}/ltx_service/third_party/LTX-Video"
@@ -49,6 +53,11 @@ if [[ ! -f "${MODEL_DIR}/ltxv-2b-0.9.6-distilled-04-25.safetensors" ]]; then
   bash "${ROOT}/scripts/download_ltx_2b_distilled.sh"
 fi
 
+# LTX loads T5 from PixArt-alpha/PixArt-XL-2-1024-MS at job time; prefetch now so
+# first jobs do not fail on incomplete/zero-byte HF cache entries.
+echo "==> Prefetching PixArt T5 text_encoder + tokenizer..."
+LTX_PYTHON="${LTX_VENV}/bin/python" bash "${ROOT}/scripts/download_ltx_pixart_text_encoder.sh"
+
 if [[ ! -f "${ROOT}/.env" ]]; then
   cp .env.example .env
 fi
@@ -56,15 +65,24 @@ if ! grep -q '^WAN_WORKER_API_KEY=' "${ROOT}/.env" 2>/dev/null; then
   KEY="$(python -c "import secrets; print(secrets.token_urlsafe(32))")"
   echo "WAN_WORKER_API_KEY=${KEY}" >> "${ROOT}/.env"
 fi
-{
-  echo ""
-  echo "LTX_PYTHON=ltx_service/engines/ltx-env/bin/python"
-  echo "LTX_ENV_DIR=ltx_service/engines/ltx-env"
-  echo "LTX_REPO_DIR=ltx_service/third_party/LTX-Video"
-  echo "LTX_MODEL_PATH=ltx_service/models/ltx/ltxv-2b-0.9.6-distilled-04-25.safetensors"
-  echo "LTX_PIPELINE_CONFIG=configs/ltxv-2b-0.9.6-distilled.yaml"
-  echo "WAN_PERSISTENT_INFERENCE=false"
-} >> "${ROOT}/.env"
+# Idempotent env keys (do not append duplicates on re-run).
+upsert_env() {
+  local key="$1"
+  local value="$2"
+  if grep -q "^${key}=" "${ROOT}/.env" 2>/dev/null; then
+    # shellcheck disable=SC2016
+    sed -i "s|^${key}=.*|${key}=${value}|" "${ROOT}/.env"
+  else
+    echo "${key}=${value}" >> "${ROOT}/.env"
+  fi
+}
+upsert_env "LTX_PYTHON" "ltx_service/engines/ltx-env/bin/python"
+upsert_env "LTX_ENV_DIR" "ltx_service/engines/ltx-env"
+upsert_env "LTX_REPO_DIR" "ltx_service/third_party/LTX-Video"
+upsert_env "LTX_MODEL_PATH" "ltx_service/models/ltx/ltxv-2b-0.9.6-distilled-04-25.safetensors"
+upsert_env "LTX_PIPELINE_CONFIG" "configs/ltxv-2b-0.9.6-distilled.yaml"
+upsert_env "WAN_PERSISTENT_INFERENCE" "false"
+upsert_env "HF_HUB_ENABLE_HF_TRANSFER" "0"
 
 echo "LTX setup complete. Test: python scripts/test_ltx.py --prompt '...' --duration 5"
 echo "Health: GET /api/v1/video/engines/ltx/health"

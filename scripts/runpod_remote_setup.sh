@@ -3,6 +3,7 @@
 #   bash scripts/runpod_remote_setup.sh          # Wan (default)
 #   bash scripts/runpod_remote_setup.sh wan
 #   bash scripts/runpod_remote_setup.sh ltx
+#   bash scripts/runpod_remote_setup.sh cogvideox
 #   bash scripts/runpod_remote_setup.sh storyboard
 set -euo pipefail
 
@@ -16,11 +17,14 @@ case "${ENGINE}" in
   ltx)
     exec bash "${ROOT}/scripts/runpod_remote_setup_ltx.sh"
     ;;
+  cogvideox|cogx|cog)
+    exec bash "${ROOT}/scripts/runpod_remote_setup_cogvideox.sh"
+    ;;
   storyboard)
     exec bash "${ROOT}/scripts/runpod_remote_setup_storyboard.sh"
     ;;
   *)
-    echo "Usage: $0 [wan|ltx|storyboard]"
+    echo "Usage: $0 [wan|ltx|cogvideox|storyboard]"
     exit 1
     ;;
 esac

@@ -210,12 +210,13 @@ class PersistentInferenceWorker:
         self,
         *,
         job_id: str,
-        image_path: Path,
+        image_path: Path | None,
         prompt: str,
         output_mp4: Path,
         size: str,
         sample_steps: int | None,
         frame_num: int | None,
+        seed: int | None = None,
         on_log_line: Callable[[str], None] | None = None,
         job_timeout_sec: float = 3600.0,
     ) -> None:
@@ -231,16 +232,19 @@ class PersistentInferenceWorker:
         payload: dict[str, Any] = {
             "type": "generate",
             "job_id": job_id,
-            "image_path": str(image_path.resolve()),
             "prompt": prompt,
             "output_mp4": str(output_mp4.resolve()),
             "size": size,
             "gpu_only": gpu_only,
         }
+        if image_path is not None:
+            payload["image_path"] = str(image_path.resolve())
         if sample_steps is not None:
             payload["sample_steps"] = sample_steps
         if frame_num is not None:
             payload["frame_num"] = frame_num
+        if seed is not None:
+            payload["seed"] = seed
 
         with self._lock:
             self._job_done.clear()

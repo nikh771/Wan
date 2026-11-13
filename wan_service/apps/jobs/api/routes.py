@@ -22,6 +22,35 @@ from wan_service.utils.job_ids import require_job_id
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
+ALLOWED_VIDEO_MODES = {"text_to_video", "image_to_video"}
+
+
+def _resolve_video_mode(
+    *,
+    engine: str,
+    task: str | None,
+    ltx_mode: str | None,
+) -> str | None:
+    raw = (task or ltx_mode or "").strip().lower()
+    if engine == "storyboard":
+        return None
+    if not raw:
+        # CogVideoX POC is T2V-only; default other engines to I2V for backward compat.
+        return "text_to_video" if engine == "cogvideox" else "image_to_video"
+    if raw not in ALLOWED_VIDEO_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail="task/mode must be text_to_video or image_to_video",
+        )
+    if engine == "cogvideox" and raw != "text_to_video":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "CogVideoX POC supports text_to_video only. "
+                "I2V requires a separate CogVideoX I2V checkpoint."
+            ),
+        )
+    return raw
 
 
 @router.post("")
@@ -31,7 +60,8 @@ async def create_job(
     duration_seconds: float = Form(5.0),
     engine_type: str = Form("wan"),
     image: Annotated[UploadFile | None, File()] = None,
-    ltx_mode: str = Form("image_to_video"),
+    task: str | None = Form(None),
+    ltx_mode: str | None = Form(None),
     negative_prompt: str | None = Form(None),
     width: int | None = Form(None),
     height: int | None = Form(None),
@@ -54,10 +84,8 @@ async def create_job(
     if negative_prompt and len(negative_prompt) > service_config.MAX_PROMPT_CHARS:
         raise HTTPException(status_code=400, detail="negative_prompt too long")
 
-    mode = (ltx_mode or "image_to_video").strip().lower()
-    if engine == "ltx" and mode not in ("text_to_video", "image_to_video"):
-        raise HTTPException(status_code=400, detail="ltx_mode must be text_to_video or image_to_video")
-    needs_image = engine != "ltx" or mode == "image_to_video"
+    mode = _resolve_video_mode(engine=engine, task=task, ltx_mode=ltx_mode)
+    needs_image = engine == "storyboard" or mode == "image_to_video"
     if needs_image and image is None:
         raise HTTPException(status_code=400, detail="image is required for this engine/mode")
     if image is not None:
@@ -77,6 +105,12 @@ async def create_job(
         if len(data) < 100:
             raise HTTPException(status_code=400, detail="Empty image")
 
+    # CogVideoX official defaults when clients omit geometry/fps.
+    if engine == "cogvideox":
+        width = 720 if width is None else width
+        height = 480 if height is None else height
+        fps = 8 if fps is None else fps
+
     try:
         record = job_manager.create_job(
             prompt=prompt.strip(),
@@ -86,7 +120,7 @@ async def create_job(
             width=width,
             height=height,
             fps=fps,
-            ltx_mode=mode if engine == "ltx" else None,
+            ltx_mode=mode,
             seed=seed,
         )
     except RuntimeError as exc:

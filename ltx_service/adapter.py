@@ -7,6 +7,7 @@ Lazy load / unload around each generate() call; does not import at FastAPI start
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -123,10 +124,13 @@ class LTXVideoEngine:
                 f"Place {LTX_CHECKPOINT_FILENAME} under ltx_service/models/ltx/"
             )
         t0 = time.perf_counter()
+        from ltx_service.vram import should_offload_to_cpu
+
         self._resolved_pipeline = materialize_pipeline_config(
             self.repo_dir,
             self.pipeline_rel,
             self.model_path,
+            disable_prompt_enhancement=should_offload_to_cpu(),
         )
         self._loaded = True
         elapsed = time.perf_counter() - t0
@@ -180,18 +184,44 @@ class LTXVideoEngine:
         assert self._resolved_pipeline is not None
         from ltx_video.inference import InferenceConfig, infer
 
+        from ltx_service.vram import (
+            gpu_total_memory_gb,
+            install_vram_safe_pipeline_factory,
+            should_offload_to_cpu,
+        )
+
+        # Patch before infer(): upstream loads T5 in fp32 onto CUDA and OOMs on 24GB.
+        install_vram_safe_pipeline_factory()
+        offload = should_offload_to_cpu()
+        bench.extra["offload_to_cpu"] = offload
+        bench.extra["gpu_total_gb"] = gpu_total_memory_gb()
+
         out_dir = request.output_mp4.parent
         out_dir.mkdir(parents=True, exist_ok=True)
 
         conditioning_paths = None
         conditioning_start = None
+        conditioning_strengths = None
         if request.mode == "image_to_video" and request.image_path:
             conditioning_paths = [str(request.image_path.resolve())]
             conditioning_start = [0]
+            strength = float(os.environ.get("LTX_CONDITIONING_STRENGTH", "0.7"))
+            strength = min(1.0, max(0.05, strength))
+            conditioning_strengths = [strength]
+
+        default_neg = os.environ.get(
+            "LTX_DEFAULT_NEGATIVE_PROMPT",
+            "still image, frozen frame, no motion, static pose, slideshow, nearly still, "
+            "subtle motion, micro movement, idle, posed photograph, "
+            "worst quality, inconsistent motion, blurry, jittery, distorted, watermark",
+        )
+        negative = (request.negative_prompt or "").strip() or default_neg
+        cond_noise = float(os.environ.get("LTX_IMAGE_COND_NOISE_SCALE", "0.5"))
+        cond_noise = min(1.0, max(0.0, cond_noise))
 
         config = InferenceConfig(
             prompt=request.prompt,
-            negative_prompt=request.negative_prompt or "",
+            negative_prompt=negative,
             output_path=str(out_dir),
             pipeline_config=str(self._resolved_pipeline),
             seed=seed,
@@ -201,11 +231,19 @@ class LTXVideoEngine:
             frame_rate=request.fps,
             conditioning_media_paths=conditioning_paths,
             conditioning_start_frames=conditioning_start,
-            offload_to_cpu=False,
+            conditioning_strengths=conditioning_strengths,
+            image_cond_noise_scale=cond_noise,
+            # Upstream only applies offload when VRAM < 30GB; required on A5000-class.
+            offload_to_cpu=offload,
         )
+        bench.extra["conditioning_strength"] = (
+            conditioning_strengths[0] if conditioning_strengths else None
+        )
+        bench.extra["image_cond_noise_scale"] = cond_noise
 
         logger.info(
-            "LTX generate | model=%s mode=%s frames=%s (%s@%sfps) size=%sx%s gpu=%s",
+            "LTX generate | model=%s mode=%s frames=%s (%s@%sfps) size=%sx%s "
+            "gpu=%s cond_strength=%s cond_noise=%s",
             LTX_CHECKPOINT_FILENAME,
             request.mode,
             frame_plan.actual_frames,
@@ -214,6 +252,8 @@ class LTXVideoEngine:
             res.width,
             res.height,
             bench.gpu,
+            conditioning_strengths[0] if conditioning_strengths else None,
+            cond_noise,
         )
 
         t0 = time.perf_counter()

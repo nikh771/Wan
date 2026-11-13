@@ -203,7 +203,8 @@ def health_payload() -> dict[str, Any]:
     state = evaluate_inference_readiness()
     engines = _engines_health()
     any_engine_ready = any(
-        engines.get(f"engine_{name}_ready") for name in ("wan", "ltx", "storyboard")
+        engines.get(f"engine_{name}_ready")
+        for name in ("wan", "ltx", "cogvideox", "storyboard")
     )
     api_ok = True
     status = "ok" if (state.ready or any_engine_ready) else "degraded"
@@ -241,7 +242,7 @@ def _engines_health() -> dict[str, Any]:
     from core.engine_dispatch import evaluate_engine_readiness
 
     out: dict[str, Any] = {}
-    for name in ("wan", "ltx", "storyboard"):
+    for name in ("wan", "ltx", "cogvideox", "storyboard"):
         state = evaluate_engine_readiness(name)  # type: ignore[arg-type]
         out[f"engine_{name}_ready"] = state.ready
         out[f"engine_{name}_reason"] = None if state.ready else state.public_reason

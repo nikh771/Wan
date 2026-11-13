@@ -76,7 +76,10 @@ def _run_generate(pipeline, cfg, msg: dict[str, Any]) -> None:
     if size_key not in SIZE_CONFIGS:
         raise ValueError(f"Unsupported size {size_key!r}")
 
-    img = Image.open(msg["image_path"]).convert("RGB")
+    image_path = msg.get("image_path")
+    img = None
+    if image_path:
+        img = Image.open(image_path).convert("RGB")
     output_mp4 = Path(msg["output_mp4"])
     output_mp4.parent.mkdir(parents=True, exist_ok=True)
 
@@ -87,7 +90,7 @@ def _run_generate(pipeline, cfg, msg: dict[str, Any]) -> None:
     if sampling_steps is None:
         sampling_steps = cfg.sample_steps
 
-    logging.info("Generating video ...")
+    logging.info("Generating video (%s) ...", "i2v" if img is not None else "t2v")
     video = pipeline.generate(
         msg["prompt"],
         img=img,

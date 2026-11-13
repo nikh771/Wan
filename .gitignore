@@ -12,5 +12,11 @@ wan_jobs/
 outputs/
 .env
 
+# Isolated engine virtualenvs (Wan API uses ./venv; engines use their own)
+ltx_service/engines/
+cogvideox_service/engines/
+cogvideox_service/models/
+cogvideox_service/outputs/
+
 .DS_Store
 .vscode/

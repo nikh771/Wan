@@ -6,6 +6,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${ROOT}/ltx_service/models/ltx"
 mkdir -p "${OUT}"
 
+# Avoid empty/partial HF downloads when hf_transfer is enabled but not installed.
+unset HF_HUB_ENABLE_HF_TRANSFER
+export HF_HUB_ENABLE_HF_TRANSFER=0
+
 FILE="ltxv-2b-0.9.6-distilled-04-25.safetensors"
 
 if command -v hf >/dev/null 2>&1; then

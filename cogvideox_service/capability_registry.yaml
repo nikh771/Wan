@@ -1,0 +1,23 @@
+cogvideox_2b:
+  engine: cogvideox
+  model: CogVideoX-2b
+  hf_id: zai-org/CogVideoX-2b
+  type: video
+  modes:
+    - text_to_video
+  # I2V requires a separate CogVideoX I2V checkpoint + CogVideoXImageToVideoPipeline.
+  # Not integrated in this POC.
+  modes_planned:
+    - image_to_video
+  license: Apache-2.0
+  commercial_use: true
+  precision:
+    - float16
+    - bfloat16
+  num_inference_steps: 50
+  guidance_scale: 6
+  default_width: 720
+  default_height: 480
+  default_num_frames: 49
+  default_fps: 8
+  enabled: true

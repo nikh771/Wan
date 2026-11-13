@@ -89,6 +89,8 @@ def materialize_pipeline_config(
     repo_dir: Path,
     pipeline_rel: str,
     checkpoint_path: Path,
+    *,
+    disable_prompt_enhancement: bool = False,
 ) -> Path:
     """Write resolved YAML with absolute checkpoint_path (does not modify repo file)."""
     import yaml
@@ -105,6 +107,9 @@ def materialize_pipeline_config(
     data["checkpoint_path"] = str(checkpoint_path.resolve())
     data["num_inference_steps"] = data.get("num_inference_steps", DEFAULT_NUM_INFERENCE_STEPS)
     data["guidance_scale"] = data.get("guidance_scale", DEFAULT_GUIDANCE_SCALE)
+    # Florence-2 + Llama enhancers will not fit alongside LTX+T5 on 24GB cards.
+    if disable_prompt_enhancement:
+        data["prompt_enhancement_words_threshold"] = 0
     out_dir = checkpoint_path.parent
     out_dir.mkdir(parents=True, exist_ok=True)
     dest = out_dir / ".ltx-pipeline-resolved.yaml"

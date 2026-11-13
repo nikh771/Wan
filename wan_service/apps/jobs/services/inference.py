@@ -1,4 +1,4 @@
-"""Run official Wan2.2 generate.py for TI2V-5B image-to-video."""
+"""Run official Wan2.2 generate.py for TI2V-5B text/image-to-video."""
 
 from __future__ import annotations
 
@@ -20,12 +20,16 @@ logger = logging.getLogger(__name__)
 _LOG_TAIL_LINES = 40
 
 
-def select_wan_size(image_path: Path) -> str:
-    with Image.open(image_path) as im:
-        w, h = im.size
-    if w >= h:
-        return settings.WAN_SIZE_LANDSCAPE
-    return settings.WAN_SIZE_PORTRAIT
+def select_wan_size(image_path: Path | None, *, width: int | None = None, height: int | None = None) -> str:
+    if image_path is not None and image_path.is_file():
+        with Image.open(image_path) as im:
+            w, h = im.size
+        if w >= h:
+            return settings.WAN_SIZE_LANDSCAPE
+        return settings.WAN_SIZE_PORTRAIT
+    if width is not None and height is not None and height > width:
+        return settings.WAN_SIZE_PORTRAIT
+    return settings.WAN_SIZE_LANDSCAPE
 
 
 def resolve_gpu_only_inference() -> tuple[bool, str]:
@@ -101,13 +105,28 @@ def _stream_subprocess_output(
     return tail
 
 
+def _resolve_frame_num(override: int | None) -> int | None:
+    cfg = get_settings()
+    frame_num = override if override is not None else cfg.WAN_INFERENCE_FRAME_NUM
+    if frame_num is not None and (frame_num <= 0 or (frame_num - 1) % 4 != 0):
+        raise ValueError(
+            f"frame_num must be 4n+1 (got {frame_num}); e.g. 49, 81, 121"
+        )
+    return frame_num
+
+
 def run_wan_inference(
     *,
     job_id: str = "local",
-    image_path: Path,
+    image_path: Path | None,
     prompt: str,
     output_mp4: Path,
     on_log_line: Callable[[str], None] | None = None,
+    frame_num: int | None = None,
+    seed: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    size: str | None = None,
 ) -> None:
     cfg = get_settings()
     script = cfg.wan_generate_script
@@ -118,15 +137,28 @@ def run_wan_inference(
         raise FileNotFoundError(f"Wan generate.py not found: {script}")
     if not ckpt.exists():
         raise FileNotFoundError(f"Wan checkpoint dir not found: {ckpt}")
+    if image_path is not None and not image_path.is_file():
+        raise FileNotFoundError(f"Input image not found: {image_path}")
 
     output_mp4.parent.mkdir(parents=True, exist_ok=True)
-    size = select_wan_size(image_path)
+    size_key = size or select_wan_size(image_path, width=width, height=height)
     gpu_only, gpu_mode_reason = resolve_gpu_only_inference()
+    resolved_frames = _resolve_frame_num(frame_num)
 
-    frame_num = cfg.WAN_INFERENCE_FRAME_NUM
-    if frame_num is not None and (frame_num <= 0 or (frame_num - 1) % 4 != 0):
-        raise ValueError(
-            f"WAN_INFERENCE_FRAME_NUM must be 4n+1 (got {frame_num}); e.g. 49, 81, 121"
+    def _run_persistent() -> None:
+        from wan_service.apps.jobs.services.persistent_worker import get_persistent_worker
+
+        worker = get_persistent_worker()
+        worker.run_job(
+            job_id=job_id,
+            image_path=image_path,
+            prompt=prompt,
+            output_mp4=output_mp4,
+            size=size_key,
+            sample_steps=cfg.WAN_INFERENCE_SAMPLE_STEPS,
+            frame_num=resolved_frames,
+            seed=seed,
+            on_log_line=on_log_line,
         )
 
     if cfg.WAN_PERSISTENT_INFERENCE and cfg.resolved_inference_backend() == "linux_cuda":
@@ -140,16 +172,7 @@ def run_wan_inference(
                 gpu_only,
                 gpu_mode_reason,
             )
-            worker.run_job(
-                job_id=job_id,
-                image_path=image_path,
-                prompt=prompt,
-                output_mp4=output_mp4,
-                size=size,
-                sample_steps=cfg.WAN_INFERENCE_SAMPLE_STEPS,
-                frame_num=frame_num,
-                on_log_line=on_log_line,
-            )
+            _run_persistent()
             return
         if worker.is_loading:
             logger.info(
@@ -161,16 +184,7 @@ def run_wan_inference(
                     "[wan_service] Waiting for warm worker to finish loading (one model on GPU)…"
                 )
             worker.wait_until_ready(timeout_sec=cfg.WAN_WORKER_LOAD_TIMEOUT_SEC)
-            worker.run_job(
-                job_id=job_id,
-                image_path=image_path,
-                prompt=prompt,
-                output_mp4=output_mp4,
-                size=size,
-                sample_steps=cfg.WAN_INFERENCE_SAMPLE_STEPS,
-                frame_num=frame_num,
-                on_log_line=on_log_line,
-            )
+            _run_persistent()
             return
         if worker.init_error:
             logger.warning(
@@ -184,7 +198,7 @@ def run_wan_inference(
         "--task",
         "ti2v-5B",
         "--size",
-        size,
+        size_key,
         "--ckpt_dir",
         str(ckpt),
         "--offload_model",
@@ -192,38 +206,42 @@ def run_wan_inference(
         "--convert_model_dtype",
         "--init_on_cpu",
         "False" if gpu_only else "True",
-        "--image",
-        str(image_path),
         "--prompt",
         prompt,
         "--save_file",
         str(output_mp4),
     ]
+    if image_path is not None:
+        cmd.extend(["--image", str(image_path)])
     if not gpu_only:
         cmd.append("--t5_cpu")
 
     if cfg.WAN_INFERENCE_SAMPLE_STEPS is not None:
         cmd.extend(["--sample_steps", str(cfg.WAN_INFERENCE_SAMPLE_STEPS)])
-    if frame_num is not None:
-        cmd.extend(["--frame_num", str(frame_num)])
+    if resolved_frames is not None:
+        cmd.extend(["--frame_num", str(resolved_frames)])
+    if seed is not None:
+        cmd.extend(["--base_seed", str(seed)])
 
     env = _inference_env(repo=repo, gpu_only=gpu_only)
 
     logger.info(
-        "Starting Wan inference cwd=%s size=%s steps=%s frames=%s backend=%s "
+        "Starting Wan inference cwd=%s size=%s steps=%s frames=%s image=%s backend=%s "
         "gpu_only=%s (%s) cuda_device=%s",
         repo,
-        size,
+        size_key,
         cfg.WAN_INFERENCE_SAMPLE_STEPS if cfg.WAN_INFERENCE_SAMPLE_STEPS is not None else "default",
-        cfg.WAN_INFERENCE_FRAME_NUM if cfg.WAN_INFERENCE_FRAME_NUM is not None else "default",
+        resolved_frames if resolved_frames is not None else "default",
+        image_path is not None,
         env["WAN_INFERENCE_BACKEND"],
         gpu_only,
         gpu_mode_reason,
         env["CUDA_VISIBLE_DEVICES"],
     )
     if on_log_line is not None:
+        mode = "i2v" if image_path is not None else "t2v"
         on_log_line(
-            f"[wan_service] Spawning generate.py (gpu_only={gpu_only}, size={size})"
+            f"[wan_service] Spawning generate.py ({mode}, gpu_only={gpu_only}, size={size_key})"
         )
     process = subprocess.Popen(
         cmd,

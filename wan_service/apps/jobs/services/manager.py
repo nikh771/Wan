@@ -185,7 +185,12 @@ class JobManager:
             record.stage = "rendering"
             record.message = line.replace("[storyboard]", "").strip() or "Rendering…"
             record.progress = max(record.progress or 0, 40)
-        elif line.startswith("[ltx]") or line.startswith("[wan_service]"):
+        elif (
+            line.startswith("[ltx]")
+            or line.startswith("[cogvideox]")
+            or line.startswith("[cogvideox_service]")
+            or line.startswith("[wan_service]")
+        ):
             record.stage = "booting"
             if "Waiting for warm worker" in line:
                 record.message = "Waiting for startup model load (avoiding duplicate GPU load)…"
@@ -193,6 +198,29 @@ class JobManager:
             elif "Warm worker" in line:
                 record.message = "Running on warm worker (models already loaded)…"
                 record.progress = max(record.progress or 0, 30)
+            elif "Generating chunk" in line:
+                record.stage = "inference"
+                record.message = line.replace("[wan_service]", "").strip() or "Generating chunk…"
+                # Parse "chunk i/N" for coarse progress between 20–85.
+                try:
+                    part = line.split("chunk", 1)[1].strip().split()[0]
+                    cur_s, total_s = part.split("/", 1)
+                    cur, total = int(cur_s), int(total_s)
+                    if total > 0:
+                        record.progress = 20 + int(65 * (cur - 1) / total)
+                except (IndexError, ValueError):
+                    record.progress = max(record.progress or 0, 25)
+            elif "Chunked" in line or "Single-pass" in line:
+                record.stage = "inference"
+                record.message = line.replace("[wan_service]", "").strip() or "Preparing generation…"
+                record.progress = max(record.progress or 0, 18)
+            elif "Extracted bridge frame" in line:
+                record.message = "Bridging chunks (last frame → next start)…"
+                record.progress = max(record.progress or 0, record.progress or 0)
+            elif "CogVideoX" in line or "cogvideox" in line.lower():
+                record.stage = "inference"
+                record.message = "Running CogVideoX worker…"
+                record.progress = max(record.progress or 0, 25)
             elif "LTX" in line:
                 record.message = "Starting LTX worker…"
                 record.progress = max(record.progress or 0, 18)
@@ -221,8 +249,18 @@ class JobManager:
 
         try:
             assert_engine_available(record.engine_type)
-            mode = (record.ltx_mode or "image_to_video").strip()
-            needs_image = record.engine_type != "ltx" or mode == "image_to_video"
+            default_mode = (
+                "text_to_video" if record.engine_type == "cogvideox" else "image_to_video"
+            )
+            mode = (record.ltx_mode or default_mode).strip().lower()
+            if record.engine_type in ("wan", "ltx", "cogvideox") and mode not in (
+                "text_to_video",
+                "image_to_video",
+            ):
+                raise ValueError("mode must be text_to_video or image_to_video")
+            if record.engine_type == "cogvideox" and mode != "text_to_video":
+                raise ValueError("CogVideoX POC supports text_to_video only")
+            needs_image = mode == "image_to_video" or record.engine_type == "storyboard"
             if needs_image and not image_path.exists():
                 raise FileNotFoundError("Input image missing for job.")
             with self._lock:
@@ -239,7 +277,7 @@ class JobManager:
                 width=record.width,
                 height=record.height,
                 fps=record.fps,
-                mode=mode if record.engine_type == "ltx" else None,  # type: ignore[arg-type]
+                mode=mode if record.engine_type in ("wan", "ltx", "cogvideox") else None,  # type: ignore[arg-type]
                 seed=record.seed,
                 on_log_line=on_log_line,
             )

@@ -6,6 +6,7 @@ FastAPI job API with pluggable engines:
 |---------|--------|------|
 | `wan_service/` | **Wan** 2.2 TI2V-5B | GPU image-to-video (default) |
 | `ltx_service/` | **LTX** 2B distilled | GPU text/image-to-video (isolated venv) |
+| `cogvideox_service/` | **CogVideoX** 2B | GPU text-to-video (isolated venv, Diffusers) |
 | `storyboard_service/` | **Storyboard** | CPU pan/zoom (no diffusion) |
 
 Shared wiring lives in `core/` (config, types, dispatch). One API process routes jobs by `engine_type`.
@@ -22,7 +23,10 @@ Shared wiring lives in `core/` (config, types, dispatch). One API process routes
 ├── ltx_service/
 │   ├── third_party/LTX-Video/
 │   ├── models/ltx/
-│   └── engines/ltx-env/     # optional isolated Python env
+│   └── engines/ltx-env/     # isolated Python env
+├── cogvideox_service/       # separate service (same pattern as ltx_service)
+│   ├── models/cogvideox/CogVideoX-2b/
+│   └── engines/cogvideox-env/
 ├── storyboard_service/      # renderer + engine_service
 ├── scripts/                 # setup & download helpers
 ├── tests/
@@ -94,7 +98,7 @@ python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', to
 ```
 
 **Automated core + Wan on RunPod:** `bash scripts/runpod_remote_setup.sh wan`  
-**Dispatcher:** `bash scripts/runpod_remote_setup.sh [wan|ltx|storyboard]`
+**Dispatcher:** `bash scripts/runpod_remote_setup.sh [wan|ltx|cogvideox|storyboard]`
 
 ### 2.3 Core configuration (`.env`)
 
@@ -148,7 +152,7 @@ uvicorn wan_service.main:app --host 0.0.0.0 --port 8080
 curl -s http://127.0.0.1:8080/health | python -m json.tool
 ```
 
-The payload includes `inference_ready` (Wan), `engine_wan_ready`, `engine_ltx_ready`, and `engine_storyboard_ready` plus reasons when an engine is unavailable.
+The payload includes `inference_ready` (Wan), `engine_wan_ready`, `engine_ltx_ready`, `engine_cogvideox_ready`, and `engine_storyboard_ready` plus reasons when an engine is unavailable.
 
 **Job loader UI:** `http://127.0.0.1:8080/ui/job_loader.html` (or `/` redirect). Use `WAN_WORKER_API_KEY` in the form.
 
@@ -210,15 +214,31 @@ bash scripts/runpod_remote_setup.sh wan
 ### 3.5 Verify Wan
 
 - `/health` → `inference_ready: true`, `engine_wan_ready: true`
-- Create job (default `engine_type=wan`):
+- Create job (default `engine_type=wan`). Use `task=image_to_video` (default) or `task=text_to_video`.
+- **≤5s:** one TI2V pass. **>5s:** multiple ~5s chunks; each next chunk starts from the previous chunk’s last frame, then chunks are concatenated.
+
+**Image-to-video (5s):**
 
 ```bash
 curl -X POST http://127.0.0.1:8080/jobs \
   -H "Authorization: Bearer $WAN_WORKER_API_KEY" \
+  -F "task=image_to_video" \
   -F "image=@input.png;type=image/png" \
   -F "prompt=A cinematic scene with gentle natural movement" \
   -F "duration_seconds=5"
 ```
+
+**Text-to-video (no image):**
+
+```bash
+curl -X POST http://127.0.0.1:8080/jobs \
+  -H "Authorization: Bearer $WAN_WORKER_API_KEY" \
+  -F "task=text_to_video" \
+  -F "prompt=A cinematic scene with gentle natural movement" \
+  -F "duration_seconds=5"
+```
+
+**Longer video (chunked, e.g. 15s):** same as above with `-F "duration_seconds=15"`.
 
 When `WAN_PERSISTENT_INFERENCE=true`, wait for `persistent_worker_ready` in `/health` before expecting fastest job turnaround.
 
@@ -246,7 +266,17 @@ LTX_MODEL_PATH=ltx_service/models/ltx/ltxv-2b-0.9.6-distilled-04-25.safetensors
 LTX_PIPELINE_CONFIG=configs/ltxv-2b-0.9.6-distilled.yaml
 ```
 
-Keep `WAN_PERSISTENT_INFERENCE=false` on hosts that swap Wan/LTX unless you manage GPU memory explicitly.
+Keep `WAN_PERSISTENT_INFERENCE=false` on hosts that swap Wan/LTX unless you manage GPU memory explicitly. On GPUs with under 30GB VRAM, LTX auto-enables T5 CPU offload and skips in-process Florence/Llama enhancers to avoid CUDA OOM.
+
+**Prompt enhance (Ollama, free):** before each LTX job the API rewrites the prompt via Ollama (`LTX_PROMPT_ENHANCE=true`, default model `llama3.2:3b`, `keep_alive=0` + `num_gpu=0` so VRAM stays free for LTX). If Ollama is down, a cinematic motion fallback is used.
+
+```bash
+bash scripts/setup_ollama_ltx_prompts.sh
+```
+
+I2V motion defaults: `LTX_CONDITIONING_STRENGTH=0.7`, `LTX_IMAGE_COND_NOISE_SCALE=0.5`, plus `LTX_MOTION_AMPLIFY=2.4` (post-boosts visible motion for distilled I2V).
+
+**Long LTX jobs:** if `duration_seconds` > `LTX_CHUNK_SECONDS` (default 10), the API queues sequential ≤10s chunks, conditions each on the previous chunk’s last frame, then concatenates into one MP4 (same pattern as Wan chunking).
 
 ### 4.3 Setup script
 
@@ -254,7 +284,7 @@ Keep `WAN_PERSISTENT_INFERENCE=false` on hosts that swap Wan/LTX unless you mana
 bash scripts/runpod_remote_setup.sh ltx
 ```
 
-This creates `ltx_service/engines/ltx-env`, clones [Lightricks/LTX-Video](https://github.com/Lightricks/LTX-Video), installs `pip install -e ".[inference]"`, and downloads the distilled checkpoint via `scripts/download_ltx_2b_distilled.sh`.
+This creates `ltx_service/engines/ltx-env`, clones [Lightricks/LTX-Video](https://github.com/Lightricks/LTX-Video), installs `pip install -e ".[inference]"`, downloads the distilled checkpoint via `scripts/download_ltx_2b_distilled.sh`, and prefetches the PixArt T5 text encoder via `scripts/download_ltx_pixart_text_encoder.sh` (required at job time; avoids incomplete HF cache failures).
 
 ### 4.4 Manual smoke test
 
@@ -290,7 +320,73 @@ Details: `ltx_service/README.md`.
 
 ---
 
-## 5. Storyboard service installation
+## 5. CogVideoX service installation
+
+CogVideoX-2B is a **separate service** under `cogvideox_service/` (same isolation pattern as LTX).
+
+### 5.1 Layout
+
+```text
+cogvideox_service/models/cogvideox/CogVideoX-2b/  # HF Diffusers snapshot
+cogvideox_service/engines/cogvideox-env/          # isolated venv (recommended)
+cogvideox_service/outputs/                        # manual test MP4s
+```
+
+### 5.2 Environment variables
+
+```dotenv
+COGVIDEOX_PYTHON=cogvideox_service/engines/cogvideox-env/bin/python
+COGVIDEOX_ENV_DIR=cogvideox_service/engines/cogvideox-env
+COGVIDEOX_MODEL_PATH=cogvideox_service/models/cogvideox/CogVideoX-2b
+COGVIDEOX_HF_ID=zai-org/CogVideoX-2b
+COGVIDEOX_MEMORY_MODE=memory
+```
+
+Keep `WAN_PERSISTENT_INFERENCE=false` when swapping Wan / LTX / CogVideoX on one GPU.
+
+### 5.3 Setup script
+
+```bash
+bash scripts/runpod_remote_setup.sh cogvideox
+```
+
+Model download is **explicit** (never at FastAPI startup):
+
+```bash
+bash scripts/download_cogvideox_2b.sh
+```
+
+### 5.4 Manual smoke test
+
+```bash
+python scripts/test_cogvideox.py
+```
+
+### 5.5 Verify CogVideoX
+
+```bash
+curl -s -H "Authorization: Bearer $WAN_WORKER_API_KEY" \
+  http://127.0.0.1:8080/api/v1/video/engines/cogvideox/health | python -m json.tool
+```
+
+**T2V job:**
+
+```bash
+curl -X POST http://127.0.0.1:8080/jobs \
+  -H "Authorization: Bearer $WAN_WORKER_API_KEY" \
+  -F "engine_type=cogvideox" \
+  -F "task=text_to_video" \
+  -F "prompt=Slow cinematic head turn." \
+  -F "duration_seconds=6.125" \
+  -F "width=720" -F "height=480" -F "fps=8" \
+  -F "seed=12345"
+```
+
+Details: `cogvideox_service/README.md`.
+
+---
+
+## 6. Storyboard service installation
 
 CPU-only pan/zoom; no model weights. Uses the **same API `venv`** as long as storyboard deps are installed.
 
@@ -325,9 +421,9 @@ Details: `storyboard_service/README.md`.
 
 ---
 
-## 6. Using the job API
+## 7. Using the job API
 
-All engines share the same endpoints. Set `engine_type` to `wan` (default), `ltx`, or `storyboard`.
+All engines share the same endpoints. Set `engine_type` to `wan` (default), `ltx`, `cogvideox`, or `storyboard`.
 
 | Endpoint | Description |
 |----------|-------------|
@@ -355,10 +451,10 @@ Invalid job IDs return `revoke_polling: true` in error JSON — stop polling.
 
 ---
 
-## 7. Development workflow
+## 8. Development workflow
 
-1. Edit code on your branch; keep engine code inside `wan_service/`, `ltx_service/`, or `storyboard_service/`.
-2. Update the relevant requirements file (`requirements.txt`, `requirements-gpu.txt`, `ltx_service/requirements-gpu.txt`, `storyboard_service/requirements.txt`).
+1. Edit code on your branch; keep engine code inside `wan_service/`, `ltx_service/`, `cogvideox_service/`, or `storyboard_service/`.
+2. Update the relevant requirements file (`requirements.txt`, `requirements-gpu.txt`, `ltx_service/requirements-gpu.txt`, `cogvideox_service/requirements-gpu.txt`, `storyboard_service/requirements.txt`).
 3. Push and pull on the GPU host (or use Remote SSH).
 4. Re-run only the setup sections for engines you changed.
 5. `curl /health` and run a short job per engine.
@@ -367,7 +463,7 @@ Do not commit `.env`, checkpoints, or `wan_jobs/` artifacts.
 
 ---
 
-## 8. Repository and dependency policy
+## 9. Repository and dependency policy
 
 | Path | Contents |
 |------|----------|
@@ -375,9 +471,11 @@ Do not commit `.env`, checkpoints, or `wan_jobs/` artifacts.
 | `requirements-gpu.txt` | Wan GPU API/worker venv |
 | `requirements-storyboard.txt` | API + OpenCV for storyboard |
 | `ltx_service/requirements-gpu.txt` | Notes for LTX isolated env |
+| `cogvideox_service/requirements-gpu.txt` | CogVideoX isolated env deps |
 | `wan_service/third_party/Wan2.2/` | Upstream source (vendored) |
 | `wan_service/models/` | Wan weights |
 | `ltx_service/models/` | LTX weights |
+| `cogvideox_service/models/` | CogVideoX weights |
 | `core/` | Shared configuration and dispatch |
 
 Weights and secrets stay on the deployment machine; they are not stored in Git.
@@ -388,3 +486,4 @@ Weights and secrets stay on the deployment machine; they are not stored in Git.
 
 - [Wan 2.2](https://github.com/Wan-Video/Wan2.2) — review upstream license and model terms.
 - [LTX-Video](https://github.com/Lightricks/LTX-Video) — review upstream license for LTX deployments.
+- [CogVideoX-2B](https://huggingface.co/zai-org/CogVideoX-2b) — Apache-2.0 (2B only; 5B differs). See `cogvideox_service/license.json`.

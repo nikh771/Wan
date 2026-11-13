@@ -1,0 +1,8 @@
+{
+  "model": "CogVideoX-2B",
+  "code_license": "Apache-2.0",
+  "model_license": "Apache-2.0",
+  "commercial_use": true,
+  "hf_id": "zai-org/CogVideoX-2b",
+  "note": "CogVideoX-2B model, Transformers module and VAE are Apache-2.0. CogVideoX-5B has different licensing — do not conflate."
+}

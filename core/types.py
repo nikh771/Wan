@@ -7,8 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-EngineType = Literal["wan", "ltx", "storyboard"]
-LtxMode = Literal["text_to_video", "image_to_video"]
+EngineType = Literal["wan", "ltx", "cogvideox", "storyboard"]
+VideoMode = Literal["text_to_video", "image_to_video"]
+LtxMode = VideoMode  # backward-compatible alias
 
 LogCallback = Callable[[str], None]
 
@@ -24,7 +25,7 @@ class GenerationJobParams:
     width: int | None = None
     height: int | None = None
     fps: int = 24
-    mode: LtxMode | None = None
+    mode: VideoMode | None = None
     seed: int | None = None
     on_log_line: LogCallback | None = None
     metadata: dict = field(default_factory=dict)

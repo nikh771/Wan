@@ -1,0 +1,29 @@
+# CogVideoX-2B isolated environment (do NOT install into Wan venv).
+#
+#   python3 -m venv cogvideox_service/engines/cogvideox-env
+#   source cogvideox_service/engines/cogvideox-env/bin/activate
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+#   pip install -r cogvideox_service/requirements-gpu.txt
+#   bash scripts/download_cogvideox_2b.sh
+#
+# Set in .env:
+#   COGVIDEOX_PYTHON=cogvideox_service/engines/cogvideox-env/bin/python
+#   COGVIDEOX_MODEL_PATH=cogvideox_service/models/cogvideox/CogVideoX-2b
+#
+# Disk-constrained hosts may point COGVIDEOX_PYTHON at the existing LTX env
+# (compatible torch/diffusers) instead of installing a second CUDA stack.
+
+diffusers>=0.30.0
+transformers>=4.44.0
+accelerate>=0.33.0
+sentencepiece>=0.2.0
+protobuf>=4.25.0
+Pillow>=10.0.0
+imageio[ffmpeg]>=2.34.0
+imageio-ffmpeg>=0.5.0
+huggingface_hub>=0.24.0
+safetensors>=0.4.0
+numpy>=1.23.5,<2
+fastapi>=0.115.0
+pydantic-settings>=2.0.0
+PyYAML>=6.0

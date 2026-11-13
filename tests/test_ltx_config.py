@@ -62,6 +62,16 @@ def test_materialize_pipeline_config(tmp_path: Path) -> None:
     text = resolved.read_text(encoding="utf-8")
     assert str(ckpt.resolve()) in text
 
+    resolved_off = materialize_pipeline_config(
+        repo,
+        "configs/ltxv-2b-0.9.6-distilled.yaml",
+        ckpt,
+        disable_prompt_enhancement=True,
+    )
+    assert "prompt_enhancement_words_threshold: 0" in resolved_off.read_text(
+        encoding="utf-8"
+    )
+
 
 @pytest.mark.skipif(
     os.environ.get("RUN_LTX_INTEGRATION_TEST", "").lower() not in ("1", "true", "yes"),
