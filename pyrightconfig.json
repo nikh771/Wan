@@ -1,10 +1,10 @@
 {
-  "include": ["wan_service", "tests", "third_party/Wan2.2"],
+  "include": ["core", "wan_service", "ltx_service", "storyboard_service", "tests", "wan_service/third_party/Wan2.2"],
   "exclude": [
     "**/.venv",
     "**/__pycache__",
-    "third_party/Wan2.2/wan/modules/animate/preprocess/human_visualization.py",
-    "third_party/Wan2.2/wan/modules/animate/preprocess/pose2d_utils.py"
+    "wan_service/third_party/Wan2.2/wan/modules/animate/preprocess/human_visualization.py",
+    "wan_service/third_party/Wan2.2/wan/modules/animate/preprocess/pose2d_utils.py"
   ],
   "stubPath": "typings",
   "venvPath": ".",
@@ -16,14 +16,20 @@
   "reportMissingImports": "warning",
   "executionEnvironments": [
     {
+      "root": "."
+    },
+    {
       "root": "wan_service"
+    },
+    {
+      "root": "ltx_service"
     },
     {
       "root": "tests"
     },
     {
-      "root": "third_party/Wan2.2",
-      "extraPaths": ["third_party/Wan2.2"],
+      "root": "wan_service/third_party/Wan2.2",
+      "extraPaths": ["wan_service/third_party/Wan2.2"],
       "reportOptionalSubscript": "none",
       "reportOptionalOperand": "none",
       "reportOptionalMemberAccess": "none",

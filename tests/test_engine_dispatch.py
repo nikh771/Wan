@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from wan_service.apps.jobs.services.engine_dispatch import normalize_engine
+from core.engine_dispatch import normalize_engine
 
 
 def test_normalize_engine_wan_default() -> None:

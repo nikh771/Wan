@@ -11,7 +11,7 @@
 | Post-process | `wan_service/utils/ffmpeg.py` | Trim + validate MP4 |
 | Auth | `wan_service/utils/auth.py` | Bearer token |
 | Health | `wan_service/core/runtime.py` | Wan CUDA readiness |
-| Config | `wan_service/core/config.py` | `.env` driven |
+| Config | `core/config.py`, `wan_service/settings.py`, `ltx_service/settings.py` | `.env` driven |
 | UI loader | `wan_service/static/job_loader.html` | Poll job status |
 
 No Page Analysis service lives in this repo; prompts are passed on create-job.
@@ -19,12 +19,12 @@ No Page Analysis service lives in this repo; prompts are passed on create-job.
 ## New components (this phase)
 
 - `engine_type` on create-job (`wan` \| `ltx` \| `storyboard`)
-- `wan_service/apps/jobs/services/wan_engine_service.py` — thin wrapper over existing `run_wan_inference`
-- `wan_service/apps/jobs/services/ltx_engine_service.py` — isolated `LTX_PYTHON` subprocess
-- `wan_service/apps/jobs/services/storyboard_engine_service.py` — OpenCV/Pillow + FFmpeg MP4
-- `wan_service/apps/jobs/services/engine_dispatch.py` — readiness + dispatch
-- `wan_service/apps/jobs/ltx_worker_process.py` — LTX-side entry (official repo on `PYTHONPATH`)
-- `wan_service/apps/jobs/storyboard_renderer.py` — Stage 1 camera motion
+- `wan_service/engine_service.py` — thin wrapper over `run_wan_inference`
+- `ltx_service/` — LTX engine (config, adapter, runner, health, `engine_service.py`)
+- `storyboard_service/` — CPU renderer + `engine_service.py`
+- `core/engine_dispatch.py` — readiness + dispatch
+- `ltx_service/worker_main.py` — LTX_PYTHON subprocess entry (official repo on `PYTHONPATH`)
+- `storyboard_service/renderer.py` — Stage 1 camera motion
 - Split requirements + RunPod setup scripts per engine
 
 Deferred (later phases): hybrid router, per-shot jobs, fallback chain, video normalizer for merger.
@@ -39,7 +39,7 @@ Deferred (later phases): hybrid router, per-shot jobs, fallback chain, video nor
 | Engine | Environment | Risk |
 |--------|-------------|------|
 | Wan | `venv` + `requirements-gpu.txt` + flash-attn | Heavy torch stack |
-| LTX | Separate `venv_ltx` + `requirements-ltx-gpu.txt` | Different torch/diffusers pins — **do not merge into Wan venv** |
+| LTX | `ltx_service/engines/ltx-env` + `ltx_service/requirements-gpu.txt` | Different torch/diffusers pins — **do not merge into Wan venv** |
 | Storyboard | `venv` + `requirements-storyboard.txt` | CPU-friendly; shares API deps only |
 
 Do not load Wan and LTX weights in the same process.

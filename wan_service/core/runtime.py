@@ -238,9 +238,7 @@ def health_payload() -> dict[str, Any]:
 
 
 def _engines_health() -> dict[str, Any]:
-    from wan_service.apps.jobs.services.engine_dispatch import (
-        evaluate_engine_readiness,
-    )
+    from core.engine_dispatch import evaluate_engine_readiness
 
     out: dict[str, Any] = {}
     for name in ("wan", "ltx", "storyboard"):

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from wan_service.apps.jobs.storyboard_renderer import render_storyboard_mp4
+from storyboard_service.renderer import render_storyboard_mp4
 from wan_service.utils.ffmpeg import validate_output_mp4
 
 

@@ -1,12 +1,14 @@
-"""Storyboard engine — CPU camera motion (no diffusion)."""
+"""Storyboard job facade."""
 
 from __future__ import annotations
 
-from wan_service.apps.jobs.storyboard_renderer import render_storyboard_mp4
-from wan_service.engines.types import GenerationJobParams
+from core.types import GenerationJobParams
+from storyboard_service.renderer import render_storyboard_mp4
 
 
 def run_storyboard_engine(params: GenerationJobParams) -> dict:
+    if params.image_path is None or not params.image_path.is_file():
+        raise FileNotFoundError("Storyboard requires an input image.")
     duration = float(params.duration_seconds or 5.0)
     return render_storyboard_mp4(
         image_path=params.image_path,

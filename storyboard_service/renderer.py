@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import math
 import subprocess
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -12,7 +10,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from wan_service.core.config import get_settings
+from core.config import get_settings
 
 
 def _ease_in_out(t: float) -> float:
@@ -86,7 +84,6 @@ def render_storyboard_mp4(
     )
     assert proc.stdin is not None
 
-    # Crop window moves: start centered, pan right ~8% width, zoom from 1.0 to 1.08
     pan_fraction = 0.08
     zoom_end = 1.08
 

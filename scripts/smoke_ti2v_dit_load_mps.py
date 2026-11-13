@@ -39,7 +39,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-WAN_ROOT = REPO_ROOT / "third_party" / "Wan2.2"
+WAN_ROOT = REPO_ROOT / "wan_service" / "third_party" / "Wan2.2"
 DEFAULT_CKPT = REPO_ROOT / "models" / "Wan2.2-TI2V-5B"
 INDEX_NAME = "diffusion_pytorch_model.safetensors.index.json"
 # Unified-memory headroom: OS + load buffers beyond raw shard bytes on disk.

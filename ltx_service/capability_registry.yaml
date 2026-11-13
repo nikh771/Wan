@@ -1,0 +1,17 @@
+ltx_2b_0_9_6_distilled:
+  engine: ltx
+  model: ltxv-2b-0.9.6-distilled
+  checkpoint: ltxv-2b-0.9.6-distilled-04-25.safetensors
+  pipeline_config: configs/ltxv-2b-0.9.6-distilled.yaml
+  capabilities:
+    - text_to_video
+    - image_to_video
+  precision:
+    - bfloat16
+  num_inference_steps: 8
+  guidance_scale: 1
+  stg_enabled: false
+  stochastic_sampling: true
+  max_test_duration_seconds: 10
+  vram_requirement: unknown
+  enabled: true

@@ -1,246 +1,216 @@
-# Wan Service
+# Multi-engine video service
 
-A FastAPI-based video generation service powered by [Wan 2.2 TI2V-5B](https://github.com/Wan-Video/Wan2.2), supporting image-to-video and text-to-video generation through a REST API.
+FastAPI job API with pluggable engines:
+
+| Package | Engine | Role |
+|---------|--------|------|
+| `wan_service/` | **Wan** 2.2 TI2V-5B | GPU image-to-video (default) |
+| `ltx_service/` | **LTX** 2B distilled | GPU text/image-to-video (isolated venv) |
+| `storyboard_service/` | **Storyboard** | CPU pan/zoom (no diffusion) |
+
+Shared wiring lives in `core/` (config, types, dispatch). One API process routes jobs by `engine_type`.
 
 ## Architecture
 
-The project separates the API service, upstream Wan source code, and model checkpoints.
-
 ```text
-./                              # project root (after clone)
-├── README.md
-├── requirements.txt
-├── .env.example
-├── .gitignore
-├── wan_service/                  # FastAPI application
-├── third_party/
-│   └── Wan2.2/                   # Wan 2.2 source (vendored in this repo)
-├── models/
-│   └── Wan2.2-TI2V-5B/           # Model checkpoints (not in Git)
-├── scripts/                      # Setup and download scripts
+./
+├── core/                    # config, types, engine_dispatch, logging
+├── wan_service/             # FastAPI app + Wan assets
+│   ├── third_party/Wan2.2/
+│   ├── models/Wan2.2-TI2V-5B/
+│   └── apps/                # jobs API, inference, UI
+├── ltx_service/
+│   ├── third_party/LTX-Video/
+│   ├── models/ltx/
+│   └── engines/ltx-env/     # optional isolated Python env
+├── storyboard_service/      # renderer + engine_service
+├── scripts/                 # setup & download helpers
 ├── tests/
-└── wan_jobs/                     # Job inputs and outputs
+└── wan_jobs/                # job workspace (configurable)
 ```
 
 ## Prerequisites
 
-- Linux machine with an NVIDIA GPU for CUDA inference.
-- Python 3.11 or a compatible version supported by the dependencies.
+- **GPU hosts (Wan, LTX):** Linux, NVIDIA drivers, CUDA-capable PyTorch, FFmpeg/ffprobe.
+- **Storyboard-only:** Linux or macOS with FFmpeg; no GPU required.
+- Python 3.10+ (3.11 recommended for GPU stacks).
 - Git.
-- NVIDIA drivers and a compatible CUDA-enabled PyTorch installation.
-- FFmpeg and FFprobe.
-- Sufficient disk space for approximately 32 GB of model checkpoints, Python dependencies, and generated videos.
+- Disk: ~32 GB for Wan TI2V-5B weights; additional space for LTX (~single safetensors) and job outputs.
 
-Wan 2.2 TI2V-5B supports text-to-video and image-to-video generation. The official project documents 720p generation at 24 FPS and recommends at least 24 GB of GPU VRAM for its standard 720p configuration.
+Wan TI2V-5B is documented for 720p @ 24 FPS; plan for ~24 GB VRAM for comfortable full-GPU use (smaller GPUs can use offload settings in `.env`).
 
-## 1. Clone Wan Service
+---
 
-Clone your project repository and switch to the development branch:
+## 1. Clone the repository
 
 ```bash
 git clone -b dev <YOUR_REPOSITORY_URL>
 cd Wan
 ```
 
-Replace `<YOUR_REPOSITORY_URL>` with your Git repository URL and `Wan` with your clone directory name if different.
+Replace `<YOUR_REPOSITORY_URL>` and directory name as needed.
 
-## 2. Create the Python Virtual Environment
+---
+
+## 2. Core setup (required for all engines)
+
+Core steps install the **API virtual environment**, shared dependencies, and `.env` values every engine relies on. Install **engine-specific** stacks in sections 3–5 only for the engines you use.
+
+### 2.1 API virtual environment
+
+From the repository root:
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-bash scripts/runpod_remote_setup.sh
-
 python -m pip install --upgrade pip
 ```
 
-Activate the virtual environment whenever you work with the service.
+Activate `venv` whenever you run the API or storyboard jobs.
 
-## 3. Install Python Dependencies
+### 2.2 Install API Python dependencies
 
-The root `requirements.txt` is the **canonical Python dependency manifest** for this project.
+For a **minimal API + storyboard** host (no Wan/LTX torch in this venv):
 
-For Linux NVIDIA deployment, install a compatible CUDA-enabled PyTorch build first. For example, the official PyTorch CUDA 12.8 wheel index can be used when compatible with your driver and environment:
+```bash
+python -m pip install -r requirements-storyboard.txt
+```
+
+For a **Wan GPU worker** (API + Wan inference in one venv), install CUDA PyTorch first, then GPU requirements:
 
 ```bash
 python -m pip install torch torchvision torchaudio \
   --index-url https://download.pytorch.org/whl/cu128
+python -m pip install -r requirements-gpu.txt
+python -m pip install --no-deps --only-binary=flash-attn -r requirements-gpu-flash.txt
 ```
 
-Then install the project's dependencies:
+The root `requirements.txt` remains the canonical manifest for local/dev installs that mirror production.
+
+Verify CUDA (Wan/LTX GPU hosts):
 
 ```bash
-python -m pip install -r requirements.txt
+python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.version.cuda); print('GPU:', torch.cuda.is_available())"
 ```
 
-Verify PyTorch and CUDA:
+**Automated core + Wan on RunPod:** `bash scripts/runpod_remote_setup.sh wan`  
+**Dispatcher:** `bash scripts/runpod_remote_setup.sh [wan|ltx|storyboard]`
 
-```bash
-python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.version.cuda); print('GPU available:', torch.cuda.is_available())"
-```
-
-The GPU availability check should return `True` on a correctly configured CUDA host.
-
-Some optional packages, including native CUDA extensions, may require additional build configuration. Resolve any installation errors before proceeding.
-
-## 4. Configure Environment Variables
-
-Create a local environment file from the template:
+### 2.3 Core configuration (`.env`)
 
 ```bash
 cp .env.example .env
 chmod 600 .env
 ```
 
-Configure the appropriate values in `.env`:
-
-```dotenv
-APP_NAME="Wan 2.2 GPU Service"
-APP_VERSION=0.1.0
-LOG_LEVEL=INFO
-
-WAN_RUNTIME_MODE=linux_cuda
-WAN_INFERENCE_BACKEND=linux_cuda
-
-WAN_REPO_DIR=third_party/Wan2.2
-WAN_CKPT_DIR=models/Wan2.2-TI2V-5B
-WAN_GENERATE_SCRIPT=third_party/Wan2.2/generate.py
-WAN_PYTHON=venv/bin/python
-
-WAN_WORKER_HOST=127.0.0.1
-WAN_WORKER_PORT=8080
-WAN_WORKER_API_KEY=admin_user
-
-WAN_JOBS_DIR=wan_jobs
-WAN_MAX_QUEUE_SIZE=8
-WAN_MAX_IMAGE_BYTES=10485760
-WAN_MAX_PROMPT_CHARS=8000
-
-FFMPEG_BINARY=ffmpeg
-FFPROBE_BINARY=ffprobe
-
-WAN_SIZE_LANDSCAPE=1280*704
-WAN_SIZE_PORTRAIT=704*1280
-WAN_MIN_VRAM_GB=14.0
-
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-```
-
-Generate a secure API key on the deployment machine:
+Generate a secure API key:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-Replace the placeholder with the generated value. Never commit `.env` or expose the API key.
+Set it as `WAN_WORKER_API_KEY` in `.env`. Never commit `.env`.
 
-The default resolution above matches the standard TI2V-5B landscape configuration. Reduce it to a supported lower resolution if your GPU cannot handle the standard workload. The memory allocator setting can help with fragmentation but does not guarantee that inference will fit in VRAM.
+**Shared / API variables** (all engines):
 
-## 5. Install the Wan 2.2 Source Code
+| Variable | Purpose |
+|----------|---------|
+| `APP_NAME`, `APP_VERSION`, `LOG_LEVEL` | Service metadata |
+| `WAN_WORKER_HOST`, `WAN_WORKER_PORT` | Uvicorn bind |
+| `WAN_WORKER_API_KEY` | Bearer auth for job routes |
+| `WAN_JOBS_DIR` | Job input/output workspace |
+| `WAN_MAX_QUEUE_SIZE`, `WAN_MAX_IMAGE_BYTES`, `WAN_MAX_PROMPT_CHARS` | Limits |
+| `FFMPEG_BINARY`, `FFPROBE_BINARY` | Post-process & storyboard |
+| `STORYBOARD_DEFAULT_FPS` | Default FPS when omitted |
+| `PYTORCH_CUDA_ALLOC_CONF` | Optional CUDA allocator hint |
 
-Wan 2.2 source code is separate from Python dependencies and model weights.
+Engine-specific variables are documented in sections 3–5. Full template: `.env.example`.
 
-The upstream source repository is:
-
-https://github.com/Wan-Video/Wan2.2
-
-Ensure the source is available in:
-
-```text
-third_party/Wan2.2/
-```
-
-This repository **vendors** Wan 2.2 under that path (normal tracked files in git, including service-specific patches). After clone or `git pull`, verify:
-
-```bash
-test -f third_party/Wan2.2/generate.py \
-  && echo "Wan 2.2 source found"
-```
-
-**GPU / RunPod:** use `git pull` on **this repo only**. Do **not** re-clone upstream Wan2.2 into `third_party/Wan2.2` on each SSH session — that overwrites vendored changes. See `third_party/Wan2.2/VENDORED.md`.
-
-Only if `third_party/Wan2.2/` is **missing** after clone (minimal checkout), clone upstream once into that path, then commit the tree in this repo if you maintain a fork.
-
-Record the vendored revision in the parent repo:
-
-```bash
-git log -1 --oneline -- third_party/Wan2.2
-```
-
-For this service, use the root `requirements.txt` as the canonical dependency manifest rather than installing upstream `third_party/Wan2.2/requirements*.txt` separately.
-
-## 6. Download the Wan 2.2 TI2V-5B Model
-
-Model checkpoints are downloaded separately from the source repository.
-
-Install the Hugging Face Hub CLI:
-
-```bash
-python -m pip install "huggingface_hub==0.36.2"
-```
-
-Download the official TI2V-5B checkpoints:
-
-```bash
-unset HF_HUB_ENABLE_HF_TRANSFER
-hf download Wan-AI/Wan2.2-TI2V-5B \
-  --local-dir /Wan/models/Wan2.2-TI2V-5B
-```
-
-The download is approximately 32 GB. Ensure that the machine has sufficient disk space and network connectivity.
-
-Verify the checkpoint directory:
-
-```bash
-ls -lah models/Wan2.2-TI2V-5B/
-```
-
-The model directory should contain the configuration, VAE, text encoder, and diffusion model checkpoint files required by the upstream implementation.
-
-**Do not commit model weights to Git.**
-
-## 7. Install System Tools
-
-Ensure FFmpeg and FFprobe are installed:
+### 2.4 System tools
 
 ```bash
 ffmpeg -version
 ffprobe -version
 ```
 
-Install them using the system package manager if missing. Python packages such as `imageio-ffmpeg` do not necessarily replace every system-level FFmpeg requirement.
+Install via your package manager if missing (e.g. `apt-get install ffmpeg` on Debian/Ubuntu).
 
-## 8. Start the FastAPI Service
-
-From the project root, activate the virtual environment and run:
+### 2.5 Start the API
 
 ```bash
 source venv/bin/activate
-
-uvicorn wan_service.main:app \
-  --host 0.0.0.0 \
-  --port 8080
+uvicorn wan_service.main:app --host 0.0.0.0 --port 8080
 ```
 
-Check service health:
+**Health (aggregated):**
 
 ```bash
-curl http://127.0.0.1:8080/health
+curl -s http://127.0.0.1:8080/health | python -m json.tool
 ```
 
-The health response reports API availability, inference readiness, CUDA availability, checkpoint detection, and other runtime checks.
+The payload includes `inference_ready` (Wan), `engine_wan_ready`, `engine_ltx_ready`, and `engine_storyboard_ready` plus reasons when an engine is unavailable.
 
-When `WAN_PERSISTENT_INFERENCE=true` (default), the API also starts a **background worker** that loads TI2V-5B once. Check `persistent_worker_ready` in `/health` — after it is `true`, new jobs skip reloading checkpoints and usually start diffusion much sooner. The first job submitted while the worker is still loading falls back to one-shot `generate.py` automatically.
+**Job loader UI:** `http://127.0.0.1:8080/ui/job_loader.html` (or `/` redirect). Use `WAN_WORKER_API_KEY` in the form.
 
-A healthy API does not guarantee that every generation request will fit into available GPU memory.
+---
 
-### Live job loader (browser UI)
+## 3. Wan service installation
 
-With the API running, open **`http://127.0.0.1:8080/ui/job_loader.html`** (or **`/`**, which redirects there). Enter your `WAN_WORKER_API_KEY`, submit an image and prompt, and watch **real-time progress** parsed from `generate.py` logs (model load → diffusion steps → save). Poll the job API about every 800ms; share a link with `?job_id=…` to monitor an in-flight job.
+Wan code and weights live under `wan_service/`. The API calls `generate.py` in a subprocess (or a persistent worker when `WAN_PERSISTENT_INFERENCE=true`).
 
-## 9. Generate a Video
+### 3.1 Layout
 
-The job endpoint accepts an input image, a prompt, and a duration.
+```text
+wan_service/third_party/Wan2.2/     # vendored upstream (in Git)
+wan_service/models/Wan2.2-TI2V-5B/  # Hugging Face weights (not in Git)
+```
+
+Verify vendored source after clone:
+
+```bash
+test -f wan_service/third_party/Wan2.2/generate.py && echo OK
+```
+
+Do **not** re-clone upstream over `wan_service/third_party/Wan2.2` on each deploy — see `wan_service/third_party/Wan2.2/VENDORED.md`.
+
+### 3.2 Wan environment variables
+
+```dotenv
+WAN_RUNTIME_MODE=linux_cuda
+WAN_INFERENCE_BACKEND=linux_cuda
+WAN_REPO_DIR=wan_service/third_party/Wan2.2
+WAN_CKPT_DIR=wan_service/models/Wan2.2-TI2V-5B
+WAN_GENERATE_SCRIPT=wan_service/third_party/Wan2.2/generate.py
+WAN_PYTHON=venv/bin/python
+WAN_CUDA_DEVICE=0
+WAN_PERSISTENT_INFERENCE=true
+WAN_WORKER_LOAD_TIMEOUT_SEC=900
+# Optional: WAN_INFERENCE_SAMPLE_STEPS, WAN_INFERENCE_FRAME_NUM, GPU-only flags
+```
+
+### 3.3 Download TI2V-5B weights
+
+```bash
+source venv/bin/activate
+python -m pip install "huggingface_hub==0.36.2"
+bash scripts/download_ti2v_5b_weights.sh
+# Or: hf download Wan-AI/Wan2.2-TI2V-5B --local-dir wan_service/models/Wan2.2-TI2V-5B
+```
+
+```bash
+ls -lah wan_service/models/Wan2.2-TI2V-5B/
+```
+
+### 3.4 Setup script
+
+```bash
+bash scripts/runpod_remote_setup.sh wan
+```
+
+### 3.5 Verify Wan
+
+- `/health` → `inference_ready: true`, `engine_wan_ready: true`
+- Create job (default `engine_type=wan`):
 
 ```bash
 curl -X POST http://127.0.0.1:8080/jobs \
@@ -250,29 +220,130 @@ curl -X POST http://127.0.0.1:8080/jobs \
   -F "duration_seconds=5"
 ```
 
-The response contains a job ID.
+When `WAN_PERSISTENT_INFERENCE=true`, wait for `persistent_worker_ready` in `/health` before expecting fastest job turnaround.
 
-### Check job progress (poll by job id)
+---
 
-Replace `JOB_ID` with the value from the create response (or use `progress_url` from that JSON):
+## 4. LTX service installation
+
+LTX runs in a **separate Python environment** so its PyTorch stack does not conflict with Wan.
+
+### 4.1 Layout
+
+```text
+ltx_service/third_party/LTX-Video/   # git clone
+ltx_service/models/ltx/                # ltxv-2b-0.9.6-distilled-04-25.safetensors
+ltx_service/engines/ltx-env/           # isolated venv (recommended)
+```
+
+### 4.2 LTX environment variables
+
+```dotenv
+LTX_PYTHON=ltx_service/engines/ltx-env/bin/python
+LTX_ENV_DIR=ltx_service/engines/ltx-env
+LTX_REPO_DIR=ltx_service/third_party/LTX-Video
+LTX_MODEL_PATH=ltx_service/models/ltx/ltxv-2b-0.9.6-distilled-04-25.safetensors
+LTX_PIPELINE_CONFIG=configs/ltxv-2b-0.9.6-distilled.yaml
+```
+
+Keep `WAN_PERSISTENT_INFERENCE=false` on hosts that swap Wan/LTX unless you manage GPU memory explicitly.
+
+### 4.3 Setup script
+
+```bash
+bash scripts/runpod_remote_setup.sh ltx
+```
+
+This creates `ltx_service/engines/ltx-env`, clones [Lightricks/LTX-Video](https://github.com/Lightricks/LTX-Video), installs `pip install -e ".[inference]"`, and downloads the distilled checkpoint via `scripts/download_ltx_2b_distilled.sh`.
+
+### 4.4 Manual smoke test
+
+```bash
+python scripts/test_ltx.py \
+  --prompt "A character slowly turns toward the camera." \
+  --duration 5 --width 704 --height 384 --fps 24
+```
+
+Outputs: `ltx_service/outputs/ltx/`.
+
+### 4.5 Verify LTX
+
+```bash
+curl -s -H "Authorization: Bearer $WAN_WORKER_API_KEY" \
+  http://127.0.0.1:8080/api/v1/video/engines/ltx/health | python -m json.tool
+```
+
+**T2V job:**
+
+```bash
+curl -X POST http://127.0.0.1:8080/jobs \
+  -H "Authorization: Bearer $WAN_WORKER_API_KEY" \
+  -F "engine_type=ltx" \
+  -F "ltx_mode=text_to_video" \
+  -F "prompt=Slow cinematic head turn." \
+  -F "duration_seconds=5" -F "width=704" -F "height=384" -F "fps=24"
+```
+
+**I2V job:** add `-F "ltx_mode=image_to_video"` and `-F "image=@panel.png"`.
+
+Details: `ltx_service/README.md`.
+
+---
+
+## 5. Storyboard service installation
+
+CPU-only pan/zoom; no model weights. Uses the **same API `venv`** as long as storyboard deps are installed.
+
+### 5.1 Dependencies
+
+```bash
+source venv/bin/activate
+python -m pip install -r requirements-storyboard.txt
+# or: python -m pip install -r storyboard_service/requirements.txt
+```
+
+### 5.2 Setup script
+
+```bash
+bash scripts/runpod_remote_setup.sh storyboard
+```
+
+### 5.3 Verify storyboard
+
+`/health` → `engine_storyboard_ready: true`.
+
+```bash
+curl -X POST http://127.0.0.1:8080/jobs \
+  -H "Authorization: Bearer $WAN_WORKER_API_KEY" \
+  -F "engine_type=storyboard" \
+  -F "image=@panel.png;type=image/png" \
+  -F "prompt=ignored for stage-1 motion" \
+  -F "duration_seconds=5"
+```
+
+Details: `storyboard_service/README.md`.
+
+---
+
+## 6. Using the job API
+
+All engines share the same endpoints. Set `engine_type` to `wan` (default), `ltx`, or `storyboard`.
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /jobs` | Create job (multipart image + prompt) |
+| `GET /jobs/{id}` | Status and logs |
+| `GET /jobs/{id}/progress` | Lightweight poll (`?api_key=` supported) |
+| `GET /jobs/{id}/video` | Download MP4 when `completed` |
+
+**Progress poll:**
 
 ```bash
 curl -s "http://127.0.0.1:8080/jobs/JOB_ID/progress?api_key=$WAN_WORKER_API_KEY" \
   | python -m json.tool
 ```
 
-Returns `status`, `progress` (0–100), `stage`, `message`, optional diffusion `inference_step` / `inference_total_steps`, and `done` (`true` when `completed` or `failed`). Poll every few seconds until `done` is true — no need to call `/health` for job progress.
-
-Invalid or unknown job ids return **400/404** with `"revoke_polling": true` in the JSON `detail` — stop polling (do not use the literal placeholder `YOUR_JOB_ID`).
-
-Full job details (includes `recent_logs`):
-
-```bash
-curl http://127.0.0.1:8080/jobs/JOB_ID \
-  -H "Authorization: Bearer $WAN_WORKER_API_KEY"
-```
-
-### Retrieve the generated video
+**Download video:**
 
 ```bash
 curl -fSL http://127.0.0.1:8080/jobs/JOB_ID/video \
@@ -280,30 +351,40 @@ curl -fSL http://127.0.0.1:8080/jobs/JOB_ID/video \
   -o output.mp4
 ```
 
-Generated job files are stored under the configured jobs directory. Exact output paths depend on the service implementation and job status.
+Invalid job IDs return `revoke_polling: true` in error JSON — stop polling.
 
-## 10. Development Workflow
+---
 
-The recommended development workflow is:
+## 7. Development workflow
 
-1. Edit application code and update `requirements.txt` on the development branch.
-2. Commit and push changes to GitHub.
-3. Pull the changes onto the GPU machine, or use Cursor Remote SSH to edit and debug the remote code directly.
-4. Install any newly added Python dependencies from the root requirements file.
-5. Verify `/health`.
-6. Run a short inference test before larger generation jobs.
+1. Edit code on your branch; keep engine code inside `wan_service/`, `ltx_service/`, or `storyboard_service/`.
+2. Update the relevant requirements file (`requirements.txt`, `requirements-gpu.txt`, `ltx_service/requirements-gpu.txt`, `storyboard_service/requirements.txt`).
+3. Push and pull on the GPU host (or use Remote SSH).
+4. Re-run only the setup sections for engines you changed.
+5. `curl /health` and run a short job per engine.
 
-Keep model weights and `.env` on the GPU machine; neither should be committed to Git.
+Do not commit `.env`, checkpoints, or `wan_jobs/` artifacts.
 
-## Repository and Dependency Policy
+---
 
-- `requirements.txt` at the project root is the canonical Python dependency manifest.
-- `third_party/Wan2.2/` contains upstream source code, not model weights.
-- `models/Wan2.2-TI2V-5B/` contains downloaded model checkpoints.
-- `.env` contains deployment-specific configuration and secrets.
-- `wan_jobs/` contains temporary inputs and generated artifacts.
-- System packages, GPU drivers, CUDA compatibility, source checkouts, and model weights are managed separately from Python package installation.
+## 8. Repository and dependency policy
 
-## License and Attribution
+| Path | Contents |
+|------|----------|
+| `requirements.txt` | Canonical Python deps (dev) |
+| `requirements-gpu.txt` | Wan GPU API/worker venv |
+| `requirements-storyboard.txt` | API + OpenCV for storyboard |
+| `ltx_service/requirements-gpu.txt` | Notes for LTX isolated env |
+| `wan_service/third_party/Wan2.2/` | Upstream source (vendored) |
+| `wan_service/models/` | Wan weights |
+| `ltx_service/models/` | LTX weights |
+| `core/` | Shared configuration and dispatch |
 
-Wan 2.2 is maintained by [Wan-Video](https://github.com/Wan-Video/Wan2.2). Review the upstream license and model terms before redistributing the source, weights, or deploying the service commercially.
+Weights and secrets stay on the deployment machine; they are not stored in Git.
+
+---
+
+## License and attribution
+
+- [Wan 2.2](https://github.com/Wan-Video/Wan2.2) — review upstream license and model terms.
+- [LTX-Video](https://github.com/Lightricks/LTX-Video) — review upstream license for LTX deployments.

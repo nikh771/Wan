@@ -15,7 +15,7 @@ from typing import Any
 from wan_service import config as service_config
 from wan_service.apps.jobs.services.engine_dispatch import assert_engine_available, run_engine
 from wan_service.apps.jobs.services.progress_parser import parse_wan_generate_line
-from wan_service.engines.types import EngineType, GenerationJobParams
+from core.types import EngineType, GenerationJobParams
 from wan_service.utils.ffmpeg import trim_video_to_duration, validate_output_mp4
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,8 @@ class JobRecord:
     height: int | None = None
     fps: int = 24
     generation_metadata: dict | None = None
+    ltx_mode: str | None = None
+    seed: int | None = None
     duration_seconds: float | None = None
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = field(default_factory=_utc_now)
@@ -117,6 +119,8 @@ class JobManager:
         width: int | None = None,
         height: int | None = None,
         fps: int | None = None,
+        ltx_mode: str | None = None,
+        seed: int | None = None,
     ) -> JobRecord:
         with self._lock:
             if len(self._queue) + (1 if self._active else 0) >= service_config.MAX_QUEUE_SIZE:
@@ -137,6 +141,8 @@ class JobManager:
                 width=width,
                 height=height,
                 fps=fps or 24,
+                ltx_mode=ltx_mode,
+                seed=seed,
                 duration_seconds=duration_seconds,
                 work_dir=work_dir,
             )
@@ -215,7 +221,9 @@ class JobManager:
 
         try:
             assert_engine_available(record.engine_type)
-            if not image_path.exists():
+            mode = (record.ltx_mode or "image_to_video").strip()
+            needs_image = record.engine_type != "ltx" or mode == "image_to_video"
+            if needs_image and not image_path.exists():
                 raise FileNotFoundError("Input image missing for job.")
             with self._lock:
                 record.progress = max(record.progress or 0, 15)
@@ -223,7 +231,7 @@ class JobManager:
                 record.updated_at = _utc_now()
             params = GenerationJobParams(
                 job_id=job_id,
-                image_path=image_path,
+                image_path=image_path if image_path.exists() else None,
                 prompt=record.prompt,
                 output_mp4=raw_out,
                 duration_seconds=record.duration_seconds,
@@ -231,6 +239,8 @@ class JobManager:
                 width=record.width,
                 height=record.height,
                 fps=record.fps,
+                mode=mode if record.engine_type == "ltx" else None,  # type: ignore[arg-type]
+                seed=record.seed,
                 on_log_line=on_log_line,
             )
             meta = run_engine(params, record.engine_type)

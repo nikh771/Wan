@@ -24,14 +24,14 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
   fi
 fi
 
-CKPT_DIR="${ROOT}/models/Wan2.2-TI2V-5B"
+CKPT_DIR="${ROOT}/wan_service/models/Wan2.2-TI2V-5B"
 JOBS_DIR="${ROOT}/wan_jobs"
 WS_AVAIL_GB=0
 if [[ -d /workspace ]]; then
   WS_AVAIL_GB="$(df -BG /workspace 2>/dev/null | awk 'NR==2 {gsub(/G/,"",$4); print $4}' || echo 0)"
 fi
 if [[ "${WS_AVAIL_GB}" -ge 35 ]]; then
-  CKPT_DIR="/workspace/models/Wan2.2-TI2V-5B"
+  CKPT_DIR="/workspace/Wan/wan_service/models/Wan2.2-TI2V-5B"
   JOBS_DIR="/workspace/wan_jobs"
   echo "==> Using /workspace for weights (${WS_AVAIL_GB} GB free)"
 fi
@@ -50,8 +50,8 @@ python -m pip install --no-deps --only-binary=flash-attn -r requirements-gpu-fla
 python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.version.cuda)"
 python -c "import flash_attn; print('flash_attn:', flash_attn.__version__)"
 
-if [[ ! -f third_party/Wan2.2/generate.py ]]; then
-  echo "ERROR: third_party/Wan2.2/generate.py missing."
+if [[ ! -f wan_service/third_party/Wan2.2/generate.py ]]; then
+  echo "ERROR: wan_service/third_party/Wan2.2/generate.py missing."
   exit 1
 fi
 

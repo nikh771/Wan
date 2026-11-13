@@ -1,16 +1,5 @@
-"""Structured logging helpers."""
+"""Backward-compatible logging — prefer ``core.logging``."""
 
-from __future__ import annotations
+from core.logging import configure_logging, get_logger
 
-import logging
-
-
-def configure_logging(level: str = "INFO") -> None:
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-    )
-
-
-def get_logger(name: str) -> logging.Logger:
-    return logging.getLogger(name)
+__all__ = ["configure_logging", "get_logger"]
