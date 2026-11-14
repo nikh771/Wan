@@ -83,7 +83,35 @@ remove_path_any() {
   fi
 }
 
-echo "==> Disk cleanup | target=${TARGET:-none} full_switch=${FULL_SWITCH}"
+# Never delete the git checkout or any path that contains ROOT (e.g. repo at /workspace/Wan).
+safe_remove_external_path() {
+  local d="$1"
+  local norm_d norm_root
+  if [[ -z "${d}" ]]; then
+    return 0
+  fi
+  norm_d="$(cd "${d}" 2>/dev/null && pwd -P || echo "${d%/}")"
+  norm_root="$(cd "${ROOT}" 2>/dev/null && pwd -P || echo "${ROOT%/}")"
+  if [[ "${norm_d}" == "${norm_root}" ]]; then
+    echo "    skip ${d} (same as repo ROOT — never delete the checkout)"
+    return 0
+  fi
+  case "${norm_root}" in
+    "${norm_d}"|"${norm_d}"/*)
+      echo "    skip ${d} (repo ROOT is inside ${d})"
+      return 0
+    ;;
+  esac
+  remove_path_any "${d}"
+}
+
+if [[ ! -f "${ROOT}/scripts/runpod_remote_setup.sh" ]] || [[ ! -f "${ROOT}/scripts/gpu_setup_common.sh" ]]; then
+  echo "ERROR: ROOT=${ROOT} is not a complete Wan repo (missing scripts/)."
+  echo "       Do not point ROOT at a parent path you intend to wipe. Clone/pull the repo first."
+  exit 1
+fi
+
+echo "==> Disk cleanup | ROOT=${ROOT} target=${TARGET:-none} full_switch=${FULL_SWITCH}"
 _log_df "Project" "${ROOT}"
 _log_df "Workspace" "/workspace"
 
@@ -105,9 +133,15 @@ if [[ "${FULL_SWITCH}" == "1" ]]; then
   remove_if_dir "${ROOT}/ltx_service/models/ltx"
   remove_if_dir "${ROOT}/cogvideox_service/models/cogvideox"
 
-  # RunPod / large workspace layouts
-  remove_path_any "/workspace/Wan"
-  remove_path_any "/workspace/wan_jobs"
+  # External RunPod paths only (never remove /workspace/Wan when the repo lives there).
+  safe_remove_external_path "/workspace/wan_jobs"
+  if [[ -d "/workspace/Wan" ]]; then
+    ext_wan_root="$(cd /workspace/Wan 2>/dev/null && pwd -P || echo /workspace/Wan)"
+    norm_root="$(cd "${ROOT}" && pwd -P)"
+    if [[ "${ext_wan_root}" != "${norm_root}" ]] && [[ "${norm_root}" != "${ext_wan_root}"/* ]]; then
+      safe_remove_external_path "/workspace/Wan"
+    fi
+  fi
 
   if [[ "${GPU_SETUP_PURGE_CLONES:-0}" == "1" ]]; then
     remove_if_dir "${ROOT}/ltx_service/third_party/LTX-Video"

@@ -94,7 +94,7 @@ python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', to
 bash scripts/runpod_remote_setup.sh wan        # or ltx | cogvideox
 ```
 
-Each run **by default** (`GPU_SETUP_FULL_SWITCH=1`): removes the other engines’ checkpoints, all venvs, `wan_jobs` outputs, pip/HF/torch caches, and `/workspace/Wan` if present, then installs **only** that engine (deps + weights + `.env`).
+Each run **by default** (`GPU_SETUP_FULL_SWITCH=1`): removes the other engines’ checkpoints, all venvs, `wan_jobs` outputs, and pip/HF/torch caches — **not** your git checkout (when the repo is `/workspace/Wan`, only `models/`, `venv/`, and job dirs under the repo are removed). Then installs **only** that engine (deps + weights + `.env`).
 
 | Variable | Meaning |
 |----------|---------|

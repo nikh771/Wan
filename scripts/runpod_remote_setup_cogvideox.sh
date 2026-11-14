@@ -13,12 +13,20 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 export ROOT
-export GPU_SETUP_TARGET_ENGINE="${GPU_SETUP_TARGET_ENGINE:-cogvideox}"
-export GPU_SETUP_FULL_SWITCH="${GPU_SETUP_FULL_SWITCH:-1}"
-bash "${ROOT}/scripts/gpu_setup_clean_disk.sh"
+
+if [[ ! -f "${ROOT}/scripts/gpu_setup_common.sh" ]]; then
+  echo "ERROR: Missing ${ROOT}/scripts/gpu_setup_common.sh"
+  echo "       If a previous setup deleted /workspace/Wan, re-clone or git pull the repo, then re-run:"
+  echo "       bash scripts/runpod_remote_setup.sh cogvideox"
+  exit 1
+fi
 
 # shellcheck source=gpu_setup_common.sh
 source "${ROOT}/scripts/gpu_setup_common.sh"
+
+export GPU_SETUP_TARGET_ENGINE="${GPU_SETUP_TARGET_ENGINE:-cogvideox}"
+export GPU_SETUP_FULL_SWITCH="${GPU_SETUP_FULL_SWITCH:-1}"
+bash "${ROOT}/scripts/gpu_setup_clean_disk.sh"
 gpu_require_nvidia
 gpu_ensure_ffmpeg
 
