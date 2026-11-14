@@ -88,10 +88,20 @@ Verify CUDA (Wan/LTX GPU hosts):
 python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.version.cuda); print('GPU:', torch.cuda.is_available())"
 ```
 
-**Automated core + Wan on RunPod:** `bash scripts/runpod_remote_setup.sh wan`  
-**Dispatcher:** `bash scripts/runpod_remote_setup.sh [wan|ltx|cogvideox]`
+**One command per GPU engine (recommended on RunPod):**
 
-GPU setup scripts run **`scripts/gpu_setup_clean_disk.sh` first** (pip/HF/torch caches, apt clean). Skip with `GPU_SETUP_SKIP_DISK_CLEAN=1`. Force fresh venvs with `GPU_SETUP_REBUILD_VENVS=1`.
+```bash
+bash scripts/runpod_remote_setup.sh wan        # or ltx | cogvideox
+```
+
+Each run **by default** (`GPU_SETUP_FULL_SWITCH=1`): removes the other engines’ checkpoints, all venvs, `wan_jobs` outputs, pip/HF/torch caches, and `/workspace/Wan` if present, then installs **only** that engine (deps + weights + `.env`).
+
+| Variable | Meaning |
+|----------|---------|
+| `GPU_SETUP_FULL_SWITCH=0` | Keep other models; still purge caches |
+| `GPU_SETUP_SKIP_DISK_CLEAN=1` | Skip all cleanup |
+| `GPU_SETUP_PURGE_CLONES=1` | Also delete `ltx_service/third_party/LTX-Video` before LTX setup |
+| `bash scripts/runpod_remote_setup.sh clean` | Disk clean only, no install |
 
 ### 2.3 Core configuration (`.env`)
 
