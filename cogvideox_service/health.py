@@ -84,6 +84,7 @@ def cogvideox_health_payload() -> dict[str, Any]:
     )
     return {
         "engine": "cogvideox",
+        "ready": ready,
         "status": "ready" if ready else "unavailable",
         "model": COGVIDEOX_MODEL_ID,
         "hf_id": cfg.COGVIDEOX_HF_ID or COGVIDEOX_HF_ID,

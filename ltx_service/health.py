@@ -91,6 +91,7 @@ def ltx_health_payload() -> dict[str, Any]:
         "capabilities": load_capability_registry().get("ltx_2b_0_9_6_distilled", {}).get(
             "capabilities", ["text_to_video", "image_to_video"]
         ),
+        "ready": ready,
         "status": "ready" if ready else "unavailable",
         "detail": None if ready else _unavailable_reason(installed, model_available, py_ok, cuda),
     }
