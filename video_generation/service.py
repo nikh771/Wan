@@ -10,6 +10,7 @@ from core.types import EngineType, VideoMode
 from video_generation.engines import evaluate_engine_readiness, normalize_engine
 from video_generation.estimates import estimate_processing_seconds
 from video_generation.modes import normalize_video_mode
+from video_generation.schemas import VideoGenerateRequest
 from wan_service import config as service_config
 from wan_service.apps.jobs.services.manager import job_manager
 
@@ -32,11 +33,16 @@ def submit_video_job(
     height: int | None,
     fps: int | None,
     seed: int | None,
+    request_metadata: dict | None = None,
+    image_pending: bool = False,
 ) -> dict:
-    try:
-        video_mode = normalize_video_mode(mode)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if isinstance(mode, str):
+        try:
+            video_mode = normalize_video_mode(mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    else:
+        video_mode = mode
 
     if not prompt.strip():
         raise HTTPException(status_code=400, detail="prompt is required")
@@ -50,8 +56,11 @@ def submit_video_job(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if video_mode == "image_to_video" and image is None:
-        raise HTTPException(status_code=400, detail="image is required for i2v / image_to_video")
+    if video_mode == "image_to_video" and image is None and not image_pending:
+        raise HTTPException(
+            status_code=400,
+            detail="image is required for i2v (multipart file, image_url, or image_base64)",
+        )
     if engine == "cogvideox" and video_mode != "text_to_video":
         raise HTTPException(
             status_code=400,
@@ -86,6 +95,7 @@ def submit_video_job(
             ltx_mode=video_mode,
             seed=seed,
             estimated_total_seconds=estimated_seconds,
+            request_metadata=request_metadata,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -108,7 +118,37 @@ def submit_video_job(
         "queue_ahead": queue_ahead,
         "image": image,
         "content_type": (image.content_type or "").lower() if image else None,
+        "has_inline_image": image is not None,
     }
+
+
+def submit_video_job_from_request(
+    body: VideoGenerateRequest,
+    *,
+    image: UploadFile | None = None,
+) -> dict:
+    """JSON shot payload → queued job (primary upstream integration)."""
+    try:
+        video_mode = normalize_video_mode(body.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    image_pending = video_mode == "image_to_video" and (
+        image is not None or bool(body.image_url) or bool(body.image_base64)
+    )
+    return submit_video_job(
+        mode=body.mode,
+        prompt=body.prompt,
+        duration_seconds=body.duration_seconds,
+        engine_type=body.engine_type,
+        image=image,
+        negative_prompt=body.negative_prompt,
+        width=body.width,
+        height=body.height,
+        fps=body.fps,
+        seed=body.seed,
+        request_metadata=body.correlation_metadata(),
+        image_pending=image_pending,
+    )
 
 
 async def persist_image_and_enqueue(job_id: str, image: UploadFile, content_type: str) -> None:
@@ -126,4 +166,18 @@ async def persist_image_and_enqueue(job_id: str, image: UploadFile, content_type
     target = record.work_dir / "input.png"
     if input_path != target:
         shutil.copy2(input_path, target)
+    job_manager.enqueue(job_id)
+
+
+async def persist_image_bytes_and_enqueue(
+    job_id: str, data: bytes, content_type: str
+) -> None:
+    record = job_manager.get(job_id)
+    if not record or not record.work_dir:
+        raise HTTPException(status_code=500, detail="Job missing work directory")
+    if len(data) > service_config.MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image too large")
+    from video_generation.images import write_job_input_image
+
+    write_job_input_image(record.work_dir, data, content_type)
     job_manager.enqueue(job_id)

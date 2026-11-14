@@ -14,6 +14,10 @@ _MODE_ALIASES: dict[str, VideoMode] = {
 }
 
 
+def video_mode_label(mode: VideoMode) -> str:
+    return "t2v" if mode == "text_to_video" else "i2v"
+
+
 def normalize_video_mode(value: str) -> VideoMode:
     key = (value or "").strip().lower()
     if key not in _MODE_ALIASES:

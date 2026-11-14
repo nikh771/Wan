@@ -46,6 +46,7 @@ class JobRecord:
     height: int | None = None
     fps: int = 24
     generation_metadata: dict | None = None
+    request_metadata: dict | None = None
     ltx_mode: str | None = None
     seed: int | None = None
     duration_seconds: float | None = None
@@ -79,6 +80,7 @@ class JobRecord:
             "engine_requested": self.engine_requested,
             "engine_used": self.engine_used,
             "generation_metadata": self.generation_metadata,
+            "request_metadata": self.request_metadata,
             "video_url": video_url,
             "progress_url": progress_url,
             "created_at": self.created_at.isoformat(),
@@ -107,7 +109,7 @@ class JobRecord:
         base = base_url.rstrip("/")
         if self.status == "completed" and self.video_path and base:
             video_url = f"{base}/video/jobs/{self.job_id}/video"
-        return {
+        out: dict[str, Any] = {
             "job_id": self.job_id,
             "status": self.status,
             "progress": self.progress,
@@ -121,6 +123,11 @@ class JobRecord:
             "estimated_total_seconds": self.estimated_total_seconds,
             "estimated_remaining_seconds": self._estimated_remaining(),
         }
+        if self.request_metadata:
+            for key in ("request_id", "shot_id", "storyboard_id", "scene_id"):
+                if key in self.request_metadata:
+                    out[key] = self.request_metadata[key]
+        return out
 
     def to_ws_event(self, *, base_url: str = "") -> dict[str, Any]:
         payload = self.to_progress_dict(base_url=base_url)
@@ -150,6 +157,7 @@ class JobManager:
         ltx_mode: str | None = None,
         seed: int | None = None,
         estimated_total_seconds: float | None = None,
+        request_metadata: dict | None = None,
     ) -> JobRecord:
         with self._lock:
             if len(self._queue) + (1 if self._active else 0) >= service_config.MAX_QUEUE_SIZE:
@@ -174,6 +182,7 @@ class JobManager:
                 seed=seed,
                 duration_seconds=duration_seconds,
                 estimated_total_seconds=estimated_total_seconds,
+                request_metadata=request_metadata,
                 work_dir=work_dir,
             )
             self._jobs[job_id] = record
@@ -309,6 +318,7 @@ class JobManager:
                 mode=mode if record.engine_type in ("wan", "ltx", "cogvideox") else None,  # type: ignore[arg-type]
                 seed=record.seed,
                 on_log_line=on_log_line,
+                metadata=dict(record.request_metadata or {}),
             )
             meta = run_engine(params, record.engine_type)
             with self._lock:

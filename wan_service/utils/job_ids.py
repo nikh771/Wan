@@ -6,8 +6,11 @@ import re
 
 from fastapi import HTTPException
 
-# Matches job_manager.create_job: wan_<16 hex chars>
-JOB_ID_PATTERN = re.compile(r"^wan_[0-9a-f]{16}$", re.IGNORECASE)
+# Matches job_manager.create_job: <engine>_<16 hex chars> (wan | ltx | cogvideox)
+JOB_ID_PATTERN = re.compile(
+    r"^(?:wan|ltx|cogvideox)_[0-9a-f]{16}$",
+    re.IGNORECASE,
+)
 
 _PLACEHOLDER_IDS = frozenset(
     {
@@ -42,7 +45,7 @@ def require_job_id(job_id: str) -> str:
         raise HTTPException(
             status_code=400,
             detail={
-                "message": "Invalid job_id format; expected wan_<16 hex characters>",
+                "message": "Invalid job_id format; expected {wan|ltx|cogvideox}_<16 hex characters>",
                 "job_id": normalized,
                 "revoke_polling": True,
             },
