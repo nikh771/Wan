@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import shutil
+from typing import Any
 
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException, Request, UploadFile
 
 from core.types import EngineType, VideoMode
 from video_generation.engines import evaluate_engine_readiness, normalize_engine
 from video_generation.estimates import estimate_processing_seconds
-from video_generation.modes import normalize_video_mode
+from video_generation.modes import normalize_video_mode, video_mode_label
 from video_generation.schemas import VideoGenerateRequest
 from wan_service import config as service_config
 from wan_service.apps.jobs.services.manager import job_manager
@@ -167,6 +168,80 @@ async def persist_image_and_enqueue(job_id: str, image: UploadFile, content_type
     if input_path != target:
         shutil.copy2(input_path, target)
     job_manager.enqueue(job_id)
+
+
+def websocket_url_for_job(request: Request, job_id: str) -> str:
+    scheme = "wss" if request.url.scheme == "https" else "ws"
+    return f"{scheme}://{request.url.netloc}/video/ws/{job_id}"
+
+
+def public_job_created_payload(
+    *,
+    request: Request,
+    record,
+    mode: VideoMode,
+    estimated_seconds: float,
+    queue_ahead: int,
+) -> dict[str, Any]:
+    base = str(request.base_url).rstrip("/")
+    payload: dict[str, Any] = {
+        "job_id": record.job_id,
+        "status": record.status,
+        "mode": video_mode_label(mode),
+        "engine_type": record.engine_type,
+        "estimated_total_seconds": estimated_seconds,
+        "estimated_remaining_seconds": estimated_seconds,
+        "queue_ahead": queue_ahead,
+        "progress_url": f"{base}/video/jobs/{record.job_id}",
+        "websocket_url": websocket_url_for_job(request, record.job_id),
+        "video_url": None,
+    }
+    meta = record.request_metadata or {}
+    for key in ("request_id", "shot_id", "storyboard_id", "scene_id"):
+        if key in meta:
+            payload[key] = meta[key]
+    return payload
+
+
+async def finalize_job_enqueue(
+    ctx: dict,
+    *,
+    image: UploadFile | None,
+    body: VideoGenerateRequest | None,
+) -> None:
+    record = ctx["record"]
+    video_mode: VideoMode = ctx["mode"]
+
+    if image is not None:
+        await persist_image_and_enqueue(
+            record.job_id,
+            image,
+            ctx["content_type"],
+        )
+        return
+
+    if body is not None:
+        if body.image_url:
+            from video_generation.images import fetch_image_url
+
+            data, content_type = await fetch_image_url(
+                body.image_url, max_bytes=service_config.MAX_IMAGE_BYTES
+            )
+            await persist_image_bytes_and_enqueue(record.job_id, data, content_type)
+            return
+        if body.image_base64:
+            from video_generation.images import decode_base64_image
+
+            data, content_type = decode_base64_image(body.image_base64)
+            await persist_image_bytes_and_enqueue(record.job_id, data, content_type)
+            return
+
+    if video_mode == "image_to_video":
+        raise HTTPException(
+            status_code=400,
+            detail="image is required for i2v (multipart file, image_url, or image_base64)",
+        )
+    job_manager.enqueue(record.job_id)
 
 
 async def persist_image_bytes_and_enqueue(

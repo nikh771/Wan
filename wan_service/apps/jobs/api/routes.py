@@ -1,15 +1,23 @@
-"""Job submission and retrieval routes."""
+"""Job submission and retrieval routes (multipart legacy + JSON video plan)."""
 
 from __future__ import annotations
 
-import shutil
+import json
 from pathlib import Path
-
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import ValidationError
 
+from core.types import VideoMode
+from video_generation.schemas import VideoGenerateRequest
+from video_generation.service import (
+    finalize_job_enqueue,
+    public_job_created_payload,
+    submit_video_job,
+    submit_video_job_from_request,
+)
 from wan_service import config as service_config
 from wan_service.apps.jobs.services.manager import job_manager
 from wan_service.apps.jobs.services.engine_dispatch import (
@@ -30,10 +38,9 @@ def _resolve_video_mode(
     engine: str,
     task: str | None,
     ltx_mode: str | None,
-) -> str | None:
+) -> VideoMode:
     raw = (task or ltx_mode or "").strip().lower()
     if not raw:
-        # CogVideoX POC is T2V-only; default other engines to I2V for backward compat.
         return "text_to_video" if engine == "cogvideox" else "image_to_video"
     if raw not in ALLOWED_VIDEO_MODES:
         raise HTTPException(
@@ -48,25 +55,24 @@ def _resolve_video_mode(
                 "I2V requires a separate CogVideoX I2V checkpoint."
             ),
         )
-    return raw
+    return cast(VideoMode, raw)
 
 
-@router.post("")
-async def create_job(
+async def _create_job_multipart(
     request: Request,
-    prompt: str = Form(...),
-    duration_seconds: float = Form(5.0),
-    engine_type: str = Form("wan"),
-    image: Annotated[UploadFile | None, File()] = None,
-    task: str | None = Form(None),
-    ltx_mode: str | None = Form(None),
-    negative_prompt: str | None = Form(None),
-    width: int | None = Form(None),
-    height: int | None = Form(None),
-    fps: int | None = Form(None),
-    seed: int | None = Form(None),
-    _: None = Depends(require_worker_auth),
-):
+    *,
+    prompt: str,
+    duration_seconds: float,
+    engine_type: str,
+    image: UploadFile | None,
+    task: str | None,
+    ltx_mode: str | None,
+    negative_prompt: str | None,
+    width: int | None,
+    height: int | None,
+    fps: int | None,
+    seed: int | None,
+) -> dict:
     if not prompt or not prompt.strip():
         raise HTTPException(status_code=400, detail="prompt is required")
     if len(prompt) > service_config.MAX_PROMPT_CHARS:
@@ -95,52 +101,91 @@ async def create_job(
     if not readiness.ready:
         raise HTTPException(status_code=503, detail=readiness.public_reason)
 
-    data = b""
-    if image is not None:
-        data = await image.read()
-        if len(data) > service_config.MAX_IMAGE_BYTES:
-            raise HTTPException(status_code=413, detail="Image too large")
-        if len(data) < 100:
-            raise HTTPException(status_code=400, detail="Empty image")
+    ctx = submit_video_job(
+        mode=mode,
+        prompt=prompt,
+        duration_seconds=duration_seconds,
+        engine_type=engine,
+        image=image,
+        negative_prompt=negative_prompt,
+        width=width,
+        height=height,
+        fps=fps,
+        seed=seed,
+    )
+    await finalize_job_enqueue(ctx, image=image, body=None)
+    return public_job_created_payload(
+        request=request,
+        record=ctx["record"],
+        mode=ctx["mode"],
+        estimated_seconds=ctx["estimated_seconds"],
+        queue_ahead=ctx["queue_ahead"],
+    )
 
-    # CogVideoX official defaults when clients omit geometry/fps.
-    if engine == "cogvideox":
-        width = 720 if width is None else width
-        height = 480 if height is None else height
-        fps = 8 if fps is None else fps
 
-    try:
-        record = job_manager.create_job(
-            prompt=prompt.strip(),
-            duration_seconds=duration_seconds,
-            engine_type=engine,
-            negative_prompt=negative_prompt.strip() if negative_prompt else None,
-            width=width,
-            height=height,
-            fps=fps,
-            ltx_mode=mode,
-            seed=seed,
+@router.post("")
+async def create_job(
+    request: Request,
+    prompt: str | None = Form(None),
+    duration_seconds: float | None = Form(None),
+    engine_type: str | None = Form(None),
+    image: Annotated[UploadFile | None, File()] = None,
+    task: str | None = Form(None),
+    ltx_mode: str | None = Form(None),
+    negative_prompt: str | None = Form(None),
+    width: int | None = Form(None),
+    height: int | None = Form(None),
+    fps: int | None = Form(None),
+    seed: int | None = Form(None),
+    _: None = Depends(require_worker_auth),
+):
+    """
+    Create a generation job.
+
+    - **JSON** (`application/json`): upstream shot plan (`VideoGenerateRequest`).
+    - **Multipart**: legacy fields `prompt`, `duration_seconds`, optional `task` / `ltx_mode`.
+    """
+    content_type = (request.headers.get("content-type") or "").lower()
+
+    if "application/json" in content_type:
+        try:
+            raw = await request.json()
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+        try:
+            body = VideoGenerateRequest.model_validate(raw)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
+        ctx = submit_video_job_from_request(body, image=image)
+        await finalize_job_enqueue(ctx, image=image, body=body)
+        return public_job_created_payload(
+            request=request,
+            record=ctx["record"],
+            mode=ctx["mode"],
+            estimated_seconds=ctx["estimated_seconds"],
+            queue_ahead=ctx["queue_ahead"],
         )
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    work_dir = record.work_dir
-    if work_dir is None:
-        raise HTTPException(status_code=503, detail="Job work directory was not created")
+    if prompt is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Send application/json (shot plan) or multipart with prompt",
+        )
 
-    if image is not None:
-        content_type = (image.content_type or "").lower()
-        suffix = ".png" if "png" in content_type else ".jpg" if "jpeg" in content_type else ".webp"
-        input_path = work_dir / f"input{suffix}"
-        input_path.write_bytes(data)
-        target = work_dir / "input.png"
-        if input_path != target:
-            shutil.copy2(input_path, target)
-
-    job_manager.enqueue(record.job_id)
-
-    base = str(request.base_url).rstrip("/")
-    return record.to_dict(base_url=base)
+    return await _create_job_multipart(
+        request,
+        prompt=prompt,
+        duration_seconds=float(duration_seconds if duration_seconds is not None else 5.0),
+        engine_type=engine_type or "wan",
+        image=image,
+        task=task,
+        ltx_mode=ltx_mode,
+        negative_prompt=negative_prompt,
+        width=width,
+        height=height,
+        fps=fps,
+        seed=seed,
+    )
 
 
 def _job_not_found(job_id: str) -> HTTPException:

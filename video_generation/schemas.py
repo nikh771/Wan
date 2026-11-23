@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from video_generation.modes import normalize_video_mode, video_mode_label
 
 
 class VideoGenerateRequest(BaseModel):
@@ -38,10 +40,30 @@ class VideoGenerateRequest(BaseModel):
 
     extra: dict[str, Any] = Field(default_factory=dict)
 
+    model_config = ConfigDict(extra="ignore")
+
     @field_validator("mode", "engine_type", mode="before")
     @classmethod
     def strip_strings(cls, value: str) -> str:
         return (value or "").strip()
+
+    @field_validator("duration_seconds", mode="before")
+    @classmethod
+    def coerce_duration(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return 5.0
+        if isinstance(value, str):
+            return float(value.strip())
+        return value
+
+    @field_validator("width", "height", "fps", "seed", mode="before")
+    @classmethod
+    def coerce_optional_int(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return None
+        if isinstance(value, str):
+            return int(float(value.strip()))
+        return value
 
     @model_validator(mode="after")
     def _i2v_needs_image_source(self) -> VideoGenerateRequest:
@@ -60,6 +82,12 @@ class VideoGenerateRequest(BaseModel):
 
     def correlation_metadata(self) -> dict[str, Any]:
         meta: dict[str, Any] = {}
+        try:
+            video_mode = normalize_video_mode(self.mode)
+            meta["mode"] = video_mode
+            meta["mode_label"] = video_mode_label(video_mode)
+        except ValueError:
+            pass
         for key in (
             "shot_id",
             "request_id",

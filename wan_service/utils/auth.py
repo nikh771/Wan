@@ -26,7 +26,9 @@ def require_worker_auth(request: Request) -> None:
     token = worker_auth_token(request)
     if not token or not secrets.compare_digest(token, key):
         detail: str | dict[str, object] = "Unauthorized"
-        if request.method == "GET" and request.url.path.startswith("/jobs/"):
+        if request.method == "GET" and (
+            request.url.path.startswith("/jobs/") or request.url.path.startswith("/video/jobs/")
+        ):
             detail = {
                 "message": "Unauthorized — set Bearer token or ?api_key=",
                 "revoke_polling": True,

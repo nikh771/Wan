@@ -43,3 +43,36 @@ def test_planning_fields_stored_in_metadata() -> None:
     meta = body.correlation_metadata()
     assert meta["motion_prompt"] == "motion"
     assert meta["storyboard_id"] == "sb_x"
+    assert meta["mode"] == "text_to_video"
+    assert meta["mode_label"] == "t2v"
+
+
+def test_upstream_shot_payload_string_numbers() -> None:
+    """Orchestration services often send numeric fields as strings."""
+    body = VideoGenerateRequest.model_validate(
+        {
+            "mode": "t2v",
+            "engine_type": "cogvideox",
+            "prompt": "Cinematic action shot of a girl walking on water.",
+            "duration_seconds": "5.0",
+            "shot_id": "shot_001",
+            "request_id": "vplan_f8f548d1b3494ebe",
+            "negative_prompt": "static pose",
+            "image_prompt": "Cinematic keyframe.",
+            "width": "720",
+            "height": "480",
+            "fps": "8",
+            "seed": "12345",
+            "motion_prompt": "continuous motion",
+            "camera_prompt": "slow push-in",
+            "storyboard_id": "sb_c5497431d5034ea0",
+            "scene_id": "scene_001",
+        }
+    )
+    assert body.duration_seconds == 5.0
+    assert body.width == 720
+    assert body.fps == 8
+    assert body.seed == 12345
+    meta = body.correlation_metadata()
+    assert meta["request_id"] == "vplan_f8f548d1b3494ebe"
+    assert meta["shot_id"] == "shot_001"

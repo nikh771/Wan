@@ -305,6 +305,15 @@ class JobManager:
                 record.progress = max(record.progress or 0, 15)
                 record.message = f"Running {record.engine_type} engine…"
                 record.updated_at = _utc_now()
+            job_metadata = dict(record.request_metadata or {})
+            job_metadata.setdefault("mode", mode)
+            correlation_bits = [
+                f"{k}={job_metadata[k]}"
+                for k in ("request_id", "shot_id", "storyboard_id", "scene_id")
+                if k in job_metadata
+            ]
+            if correlation_bits:
+                on_log_line(f"[job] {' '.join(correlation_bits)}")
             params = GenerationJobParams(
                 job_id=job_id,
                 image_path=image_path if image_path.exists() else None,
@@ -318,7 +327,7 @@ class JobManager:
                 mode=mode if record.engine_type in ("wan", "ltx", "cogvideox") else None,  # type: ignore[arg-type]
                 seed=record.seed,
                 on_log_line=on_log_line,
-                metadata=dict(record.request_metadata or {}),
+                metadata=job_metadata,
             )
             meta = run_engine(params, record.engine_type)
             with self._lock:
