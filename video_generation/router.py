@@ -10,8 +10,6 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
-from cogvideox_service.health import cogvideox_health_payload
-from ltx_service.health import ltx_health_payload
 from video_generation.progress_hub import progress_hub, stream_job_events
 from video_generation.schemas import VideoGenerateRequest
 from video_generation.service import (
@@ -22,7 +20,6 @@ from video_generation.service import (
 )
 from wan_service import config as service_config
 from wan_service.apps.jobs.services.manager import job_manager
-from wan_service.core.runtime import evaluate_inference_readiness
 from wan_service.utils.auth import require_worker_auth
 from wan_service.utils.job_ids import require_job_id
 router = APIRouter(prefix="/video", tags=["video_generation"])
@@ -154,18 +151,3 @@ async def job_progress_websocket(websocket: WebSocket, job_id: str) -> None:
     except WebSocketDisconnect:
         return
 
-
-@router.get("/engines")
-def list_engines(request: Request) -> dict:
-    require_worker_auth(request)
-    wan = evaluate_inference_readiness()
-    return {
-        "engines": {
-            "wan": {
-                "ready": wan.ready,
-                "detail": wan.public_reason,
-            },
-            "ltx": ltx_health_payload(),
-            "cogvideox": cogvideox_health_payload(),
-        }
-    }

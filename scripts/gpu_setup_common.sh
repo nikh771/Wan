@@ -110,5 +110,5 @@ gpu_print_start_api() {
   echo "==> Setup complete. Start the API (from repo root):"
   echo "    source venv/bin/activate"
   echo "    uvicorn wan_service.main:app --host 0.0.0.0 --port 8080"
-  echo "    Health: curl -s http://127.0.0.1:8080/health | python -m json.tool"
+  echo "    Health: curl -s 'http://127.0.0.1:8080/health?engine_type=wan'"
 }

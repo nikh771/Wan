@@ -139,13 +139,15 @@ source venv/bin/activate
 uvicorn wan_service.main:app --host 0.0.0.0 --port 8080
 ```
 
-**Health (aggregated):**
+**Health (one endpoint, pass `engine_type`):**
 
 ```bash
-curl -s http://127.0.0.1:8080/health | python -m json.tool
+curl -s "http://127.0.0.1:8080/health?engine_type=wan" | python -m json.tool
+curl -s "http://127.0.0.1:8080/health?engine_type=ltx" | python -m json.tool
+curl -s "http://127.0.0.1:8080/health?engine_type=cogvideox" | python -m json.tool
 ```
 
-The payload includes `inference_ready` (Wan), `engine_wan_ready`, `engine_ltx_ready`, and `engine_cogvideox_ready` plus reasons when an engine is unavailable.
+`engine_type` is required. Response includes `ready`, `status`, and `detail` for that engine. Wan responses also include `inference_ready` (alias of `ready`).
 
 **Job loader UI:** `http://127.0.0.1:8080/ui/job_loader.html` (or `/` redirect). Use `WAN_WORKER_API_KEY` in the form.
 
@@ -206,7 +208,7 @@ bash scripts/runpod_remote_setup.sh wan
 
 ### 3.5 Verify Wan
 
-- `/health` → `inference_ready: true`, `engine_wan_ready: true`
+- `curl -s "http://127.0.0.1:8080/health?engine_type=wan"` → `"ready": true`
 - Create job (default `engine_type=wan`). Use `task=image_to_video` (default) or `task=text_to_video`.
 - **≤5s:** one TI2V pass. **>5s:** multiple ~5s chunks; each next chunk starts from the previous chunk’s last frame, then chunks are concatenated.
 
@@ -286,8 +288,7 @@ Outputs: `ltx_service/outputs/ltx/`.
 ### 4.5 Verify LTX
 
 ```bash
-curl -s -H "Authorization: Bearer $WAN_WORKER_API_KEY" \
-  http://127.0.0.1:8080/api/v1/video/engines/ltx/health | python -m json.tool
+curl -s "http://127.0.0.1:8080/health?engine_type=ltx" | python -m json.tool
 ```
 
 **T2V job:**
@@ -352,8 +353,7 @@ python scripts/test_cogvideox.py
 ### 5.5 Verify CogVideoX
 
 ```bash
-curl -s -H "Authorization: Bearer $WAN_WORKER_API_KEY" \
-  http://127.0.0.1:8080/api/v1/video/engines/cogvideox/health | python -m json.tool
+curl -s "http://127.0.0.1:8080/health?engine_type=cogvideox" | python -m json.tool
 ```
 
 **T2V job:**
@@ -409,7 +409,7 @@ Invalid job IDs return `revoke_polling: true` in error JSON — stop polling.
 2. Update the relevant requirements file (`requirements.txt`, `requirements-gpu.txt`, `ltx_service/requirements-gpu.txt`, `cogvideox_service/requirements-gpu.txt`).
 3. Push and pull on the GPU host (or use Remote SSH).
 4. Re-run only the setup sections for engines you changed.
-5. `curl /health` and run a short job per engine.
+5. `curl "/health?engine_type=..."` per engine and run a short job.
 
 Do not commit `.env`, checkpoints, or `wan_jobs/` artifacts.
 

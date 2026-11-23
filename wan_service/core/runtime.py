@@ -195,54 +195,58 @@ def _persistent_worker_health() -> dict[str, Any]:
         }
 
 
-def health_payload() -> dict[str, Any]:
+def wan_health_payload() -> dict[str, Any]:
+    """Wan TI2V-5B readiness (same shape as ltx/cogvideox health)."""
     settings = get_settings()
     state = evaluate_inference_readiness()
-    engines = _engines_health()
-    any_engine_ready = any(
-        engines.get(f"engine_{name}_ready")
-        for name in ("wan", "ltx", "cogvideox")
-    )
-    api_ok = True
-    status = "ok" if (state.ready or any_engine_ready) else "degraded"
     return {
-        "status": status,
-        "api_available": api_ok,
-        "service_ready": api_ok,
-        "inference_ready": state.ready,
-        "inference_unavailable_reason": None if state.ready else state.public_reason,
-        "runtime_mode": state.runtime_mode,
+        "engine": "wan",
         "model": "Wan2.2-TI2V-5B",
-        "upstream_ti2v5b_mps_supported": UPSTREAM_TI2V5B_MPS_SUPPORTED,
+        "ready": state.ready,
+        "status": "ready" if state.ready else "unavailable",
+        "detail": None if state.ready else state.public_reason,
+        "runtime_mode": state.runtime_mode,
+        "inference_backend": settings.resolved_inference_backend(),
+        "checkpoint_ready": state.checkpoint_ready,
+        "generate_script_ready": state.generate_script_ready,
+        "wan_python_ready": state.wan_python_ready,
+        "inference_dependencies_ready": state.inference_dependencies_ready,
         "cuda_available": state.cuda.available,
         "cuda_detail": state.cuda.detail,
         "vram_gb": state.cuda.vram_gb,
         "vram_min_gb": settings.WAN_MIN_VRAM_GB,
         "vram_sufficient": state.cuda.vram_sufficient,
         "mps_available": state.mps.available,
-        "mps_detail": state.mps.detail,
-        "checkpoint_ready": state.checkpoint_ready,
-        "generate_script_ready": state.generate_script_ready,
+        "upstream_ti2v5b_mps_supported": UPSTREAM_TI2V5B_MPS_SUPPORTED,
         "ffmpeg_ready": state.ffmpeg_ready,
-        "wan_python_ready": state.wan_python_ready,
-        "inference_dependencies_ready": state.inference_dependencies_ready,
-        "inference_backend": settings.resolved_inference_backend(),
-        # Deprecated alias — never treat MPS as CUDA
-        "gpu_available": state.cuda.available,
-        "gpu_detail": state.cuda.detail,
         **_persistent_worker_health(),
-        **_engines_health(),
     }
 
 
-def _engines_health() -> dict[str, Any]:
-    from core.engine_dispatch import evaluate_engine_readiness
+def engine_health_payload(engine_type: str) -> dict[str, Any]:
+    """Health for one engine (``wan`` | ``ltx`` | ``cogvideox``)."""
+    from core.engine_dispatch import normalize_engine
 
-    out: dict[str, Any] = {}
-    for name in ("wan", "ltx", "cogvideox"):
-        state = evaluate_engine_readiness(name)  # type: ignore[arg-type]
-        out[f"engine_{name}_ready"] = state.ready
-        out[f"engine_{name}_reason"] = None if state.ready else state.public_reason
+    from cogvideox_service.health import cogvideox_health_payload
+    from ltx_service.health import ltx_health_payload
+
+    name = normalize_engine(engine_type)
+    if name == "wan":
+        body = wan_health_payload()
+    elif name == "ltx":
+        body = ltx_health_payload()
+    else:
+        body = cogvideox_health_payload()
+    ready = bool(body.get("ready"))
+    out: dict[str, Any] = {
+        "status": "ok" if ready else "degraded",
+        "engine_type": name,
+        "service_ready": True,
+        **body,
+    }
+    if name == "wan":
+        out["inference_ready"] = ready
+        out["inference_unavailable_reason"] = body.get("detail")
     return out
 
 
