@@ -38,12 +38,12 @@ class LtxSettings(BaseSettings):
     # Default clip length when clients omit duration (more frames = smoother large moves).
     LTX_DEFAULT_DURATION_SECONDS: float = 5.0
     LTX_DEFAULT_FPS: int = 24
-    # Post amplify deviation from first frame (1.0 = off). Distilled I2V needs ~2–2.5.
-    LTX_MOTION_AMPLIFY: float = 2.4
+    # Post amplify deviation from first frame (1.0 = off). MS1 handles polish; keep off here.
+    LTX_MOTION_AMPLIFY: float = 1.0
     # Jobs longer than this are queued as sequential chunks with last-frame continuity.
     LTX_CHUNK_SECONDS: float = 10.0
     # Drop held last-frame tails (LTX often freezes at clip end / chunk seams).
-    LTX_TRIM_TRAILING_FREEZE: bool = True
+    LTX_TRIM_TRAILING_FREEZE: bool = False
     LTX_TRIM_DIFF_THRESHOLD: float = 1.5
     LTX_TRIM_MIN_KEEP_RATIO: float = 0.75
     LTX_TRIM_MAX_FRAMES: int = 48

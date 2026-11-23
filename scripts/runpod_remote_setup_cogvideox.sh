@@ -28,7 +28,6 @@ export GPU_SETUP_TARGET_ENGINE="${GPU_SETUP_TARGET_ENGINE:-cogvideox}"
 export GPU_SETUP_FULL_SWITCH="${GPU_SETUP_FULL_SWITCH:-1}"
 bash "${ROOT}/scripts/gpu_setup_clean_disk.sh"
 gpu_require_nvidia
-gpu_ensure_ffmpeg
 
 COGX_VENV="${ROOT}/cogvideox_service/engines/cogvideox-env"
 MODEL_DIR="${ROOT}/cogvideox_service/models/cogvideox/CogVideoX-2b"

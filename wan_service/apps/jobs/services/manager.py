@@ -18,7 +18,6 @@ from wan_service.apps.jobs.services.progress_parser import parse_wan_generate_li
 from core.types import EngineType, GenerationJobParams
 from video_generation.estimates import estimate_remaining_seconds
 from video_generation.progress_hub import progress_hub
-from wan_service.utils.ffmpeg import trim_video_to_duration, validate_output_mp4
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +278,6 @@ class JobManager:
         progress_hub.publish(job_id, record.to_ws_event())
         image_path = record.work_dir / "input.png"
         raw_out = record.work_dir / "output_raw.mp4"
-        final_out = record.work_dir / "output.mp4"
 
         def on_log_line(line: str) -> None:
             with self._lock:
@@ -333,18 +331,10 @@ class JobManager:
             with self._lock:
                 record.engine_used = str(meta.get("engine_used", record.engine_type))
                 record.generation_metadata = meta
+            if not raw_out.is_file() or raw_out.stat().st_size < 1000:
+                raise RuntimeError("Engine did not produce a valid MP4.")
             with self._lock:
-                record.stage = "postprocessing"
-                record.message = "Finalizing video (trim / validate)…"
-                record.progress = 92
-                record.updated_at = _utc_now()
-            if record.duration_seconds and record.duration_seconds > 0:
-                trim_video_to_duration(raw_out, final_out, float(record.duration_seconds))
-            else:
-                shutil.copy2(raw_out, final_out)
-            validate_output_mp4(final_out)
-            with self._lock:
-                record.video_path = final_out
+                record.video_path = raw_out
                 record.status = "completed"
                 record.stage = "completed"
                 record.message = "Video ready"

@@ -3,15 +3,40 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
 from wan_service.core.config import settings
 
 
+def resolve_ffmpeg_binary() -> str | None:
+    """System ffmpeg, configured path, or imageio-ffmpeg wheel (for chunk stitch only)."""
+    for candidate in (settings.FFMPEG_BINARY, "ffmpeg"):
+        path = shutil.which(candidate) if candidate else None
+        if path:
+            return path
+    try:
+        import imageio_ffmpeg
+
+        bundled = imageio_ffmpeg.get_ffmpeg_exe()
+        if bundled and Path(bundled).is_file():
+            return bundled
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def ffmpeg_available() -> bool:
+    return resolve_ffmpeg_binary() is not None
+
+
 def probe_video(path: Path) -> dict:
+    ffprobe = shutil.which(settings.FFPROBE_BINARY) or shutil.which("ffprobe")
+    if not ffprobe:
+        return {"format": {"duration": "0"}, "streams": []}
     cmd = [
-        settings.FFPROBE_BINARY,
+        ffprobe,
         "-v",
         "quiet",
         "-print_format",
@@ -27,11 +52,13 @@ def probe_video(path: Path) -> dict:
 
 
 def trim_video_to_duration(source: Path, dest: Path, duration_seconds: float) -> None:
-    if duration_seconds <= 0:
+    """Legacy helper — not used by the job API (MS1 handles duration/trim)."""
+    ffmpeg = resolve_ffmpeg_binary()
+    if duration_seconds <= 0 or not ffmpeg:
         return
     dest.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        settings.FFMPEG_BINARY,
+        ffmpeg,
         "-y",
         "-i",
         str(source),
@@ -44,7 +71,7 @@ def trim_video_to_duration(source: Path, dest: Path, duration_seconds: float) ->
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         cmd = [
-            settings.FFMPEG_BINARY,
+            ffmpeg,
             "-y",
             "-i",
             str(source),
@@ -69,9 +96,12 @@ def validate_output_mp4(path: Path) -> None:
 
 def extract_last_frame(source: Path, dest: Path) -> None:
     """Write the last video frame of ``source`` as a PNG at ``dest``."""
+    ffmpeg = resolve_ffmpeg_binary()
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg not available (install or imageio-ffmpeg).")
     dest.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        settings.FFMPEG_BINARY,
+        ffmpeg,
         "-y",
         "-sseof",
         "-0.05",
@@ -90,7 +120,7 @@ def extract_last_frame(source: Path, dest: Path) -> None:
         duration = float((info.get("format") or {}).get("duration") or 0)
         seek = max(0.0, duration - 0.05)
         cmd = [
-            settings.FFMPEG_BINARY,
+            ffmpeg,
             "-y",
             "-ss",
             f"{seek:.3f}",
@@ -117,8 +147,11 @@ def concat_mp4s(
     fps: int = 24,
 ) -> None:
     """Concatenate MP4s; optionally drop frame 0 of chunks after the first (I2V bridge)."""
+    ffmpeg = resolve_ffmpeg_binary()
     if not sources:
         raise ValueError("concat_mp4s requires at least one source")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg not available (install or imageio-ffmpeg).")
     dest.parent.mkdir(parents=True, exist_ok=True)
     if len(sources) == 1:
         import shutil
@@ -131,7 +164,7 @@ def concat_mp4s(
         lines = [f"file '{path.resolve()}'" for path in sources]
         list_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
         cmd = [
-            settings.FFMPEG_BINARY,
+            ffmpeg,
             "-y",
             "-f",
             "concat",
@@ -146,7 +179,7 @@ def concat_mp4s(
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
             cmd = [
-                settings.FFMPEG_BINARY,
+                ffmpeg,
                 "-y",
                 "-f",
                 "concat",
@@ -179,7 +212,7 @@ def concat_mp4s(
         parts.append(f"[v{i}]")
     filter_steps.append(f"{''.join(parts)}concat=n={n}:v=1:a=0[outv]")
     cmd = [
-        settings.FFMPEG_BINARY,
+        ffmpeg,
         "-y",
         *inputs,
         "-filter_complex",

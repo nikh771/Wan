@@ -33,7 +33,7 @@ Shared wiring lives in `core/` (config, types, dispatch). One API process routes
 
 ## Prerequisites
 
-- **GPU hosts (Wan, LTX, CogVideoX):** Linux, NVIDIA drivers, CUDA-capable PyTorch, FFmpeg/ffprobe.
+- **GPU hosts (Wan, LTX, CogVideoX):** Linux, NVIDIA drivers, CUDA-capable PyTorch. Trim/loop/assembly is handled by MS1 (manga-proto); this service runs model inference only.
 - Python 3.10+ (3.11 recommended for GPU stacks).
 - Git.
 - Disk: ~32 GB for Wan TI2V-5B weights; additional space for LTX (~single safetensors) and job outputs.
@@ -127,21 +127,12 @@ Set it as `WAN_WORKER_API_KEY` in `.env`. Never commit `.env`.
 | `WAN_WORKER_API_KEY` | Bearer auth for job routes |
 | `WAN_JOBS_DIR` | Job input/output workspace |
 | `WAN_MAX_QUEUE_SIZE`, `WAN_MAX_IMAGE_BYTES`, `WAN_MAX_PROMPT_CHARS` | Limits |
-| `FFMPEG_BINARY`, `FFPROBE_BINARY` | Post-process (trim, concat) |
+| `FFMPEG_BINARY`, `FFPROBE_BINARY` | Optional; long jobs may stitch chunks via `imageio-ffmpeg` |
 | `PYTORCH_CUDA_ALLOC_CONF` | Optional CUDA allocator hint |
 
 Engine-specific variables are documented in sections 3–5. Full template: `.env.example`.
 
-### 2.4 System tools
-
-```bash
-ffmpeg -version
-ffprobe -version
-```
-
-Install via your package manager if missing (e.g. `apt-get install ffmpeg` on Debian/Ubuntu).
-
-### 2.5 Start the API
+### 2.4 Start the API
 
 ```bash
 source venv/bin/activate

@@ -69,8 +69,9 @@ def probe_mps() -> MpsProbe:
 
 
 def probe_ffmpeg() -> bool:
-    settings = get_settings()
-    return bool(shutil.which(settings.FFMPEG_BINARY)) and bool(shutil.which(settings.FFPROBE_BINARY))
+    from wan_service.utils.ffmpeg import ffmpeg_available
+
+    return ffmpeg_available()
 
 
 def checkpoint_ready() -> bool:
@@ -132,10 +133,6 @@ def evaluate_inference_readiness() -> InferenceReadiness:
         elif not ckpt_ok:
             detail = f"Checkpoint directory missing or empty: {settings.wan_ckpt_dir}"
             public = "Model checkpoint directory is missing or empty."
-            ready = False
-        elif not ffmpeg_ok:
-            detail = "FFmpeg/ffprobe not found on PATH (required for post-processing)."
-            public = "FFmpeg or ffprobe is not available on PATH."
             ready = False
         elif not cuda.available:
             detail = cuda.detail

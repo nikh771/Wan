@@ -21,7 +21,6 @@ export GPU_SETUP_TARGET_ENGINE="${GPU_SETUP_TARGET_ENGINE:-ltx}"
 export GPU_SETUP_FULL_SWITCH="${GPU_SETUP_FULL_SWITCH:-1}"
 bash "${ROOT}/scripts/gpu_setup_clean_disk.sh"
 gpu_require_nvidia
-gpu_ensure_ffmpeg
 gpu_ensure_git
 
 LTX_DIR="${ROOT}/ltx_service/third_party/LTX-Video"
