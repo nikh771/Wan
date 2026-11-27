@@ -14,6 +14,16 @@ from video_generation.modes import normalize_video_mode, video_mode_label
 from video_generation.schemas import VideoGenerateRequest
 from wan_service import config as service_config
 from wan_service.apps.jobs.services.manager import job_manager
+from wan_service.chunking import DEFAULT_FPS as WAN_OUTPUT_FPS
+
+
+def _resolve_job_fps(engine: EngineType, fps: int | None) -> int:
+    """Per-engine fps for frame planning (Wan generate.py always outputs 24 fps)."""
+    if engine == "wan":
+        return WAN_OUTPUT_FPS
+    if engine == "cogvideox":
+        return 8 if fps is None else int(fps)
+    return 24 if fps is None else int(fps)
 
 
 def _queue_depth() -> int:
@@ -75,7 +85,8 @@ def submit_video_job(
     if engine == "cogvideox":
         width = 720 if width is None else width
         height = 480 if height is None else height
-        fps = 8 if fps is None else fps
+
+    fps = _resolve_job_fps(engine, fps)
 
     queue_ahead = _queue_depth()
     estimated_seconds = estimate_processing_seconds(

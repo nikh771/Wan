@@ -9,6 +9,7 @@ from core.chunk_cleanup import cleanup_generation_artifacts
 from core.types import GenerationJobParams
 from wan_service.apps.jobs.services.inference import run_wan_inference, select_wan_size
 from wan_service.chunking import (
+    DEFAULT_FPS as WAN_OUTPUT_FPS,
     chunk_frame_count,
     plan_wan_chunks,
 )
@@ -32,8 +33,9 @@ def run_wan_engine(params: GenerationJobParams) -> dict:
     duration = (
         float(params.duration_seconds) if params.duration_seconds else chunk_seconds
     )
-    fps = int(params.fps or 24)
-    plan = plan_wan_chunks(duration, fps=fps, chunk_seconds=chunk_seconds)
+    # TI2V generate.py encodes at 24 fps; plan frames from duration using that rate.
+    planning_fps = WAN_OUTPUT_FPS
+    plan = plan_wan_chunks(duration, fps=planning_fps, chunk_seconds=chunk_seconds)
     size = select_wan_size(params.image_path, width=params.width, height=params.height)
     work_dir = params.output_mp4.parent
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -43,10 +45,18 @@ def run_wan_engine(params: GenerationJobParams) -> dict:
         if params.on_log_line is not None:
             params.on_log_line(msg)
 
+    client_fps = int(params.fps) if params.fps is not None else None
+    if client_fps is not None and client_fps != planning_fps:
+        _log(
+            f"[wan_service] Ignoring client fps={client_fps}; "
+            f"planning {plan.frames_per_chunk} frames at {planning_fps} fps "
+            f"(target duration {duration:.2f}s)"
+        )
+
     if plan.single_pass:
         _log(
             f"[wan_service] Single-pass {mode} | frames={plan.frames_per_chunk} "
-            f"duration≈{plan.chunk_actual_duration_seconds:.2f}s"
+            f"@{planning_fps}fps duration≈{plan.chunk_actual_duration_seconds:.2f}s"
         )
         run_wan_inference(
             job_id=params.job_id,
@@ -67,6 +77,8 @@ def run_wan_engine(params: GenerationJobParams) -> dict:
             "chunks": 1,
             "chunked": False,
             "frames_per_chunk": plan.frames_per_chunk,
+            "planning_fps": planning_fps,
+            "planned_duration_seconds": plan.chunk_actual_duration_seconds,
             "duration_seconds": duration,
         }
 
@@ -113,7 +125,7 @@ def run_wan_engine(params: GenerationJobParams) -> dict:
         chunk_paths,
         params.output_mp4,
         skip_first_frame_after_first=True,
-        fps=fps,
+        fps=planning_fps,
     )
     removed = cleanup_generation_artifacts(chunk_paths, bridge_paths)
 
