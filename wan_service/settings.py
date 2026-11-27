@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Literal
 
@@ -102,6 +103,19 @@ class WanSettings(BaseSettings):
         if self.WAN_GENERATE_SCRIPT.strip():
             return self._resolve_path(self.WAN_GENERATE_SCRIPT)
         return self.wan_repo_dir / "generate.py"
+
+    def resolved_wan_python(self) -> str:
+        """Absolute interpreter path (subprocess cwd is Wan repo — never use raw relative WAN_PYTHON)."""
+        raw = self.WAN_PYTHON.strip() or "python"
+        candidate = Path(raw)
+        if not candidate.is_absolute():
+            candidate = REPO_ROOT / candidate
+        if candidate.is_file():
+            return str(candidate.resolve())
+        found = shutil.which(raw)
+        if found:
+            return found
+        return raw
 
     def resolved_runtime_mode(self) -> RuntimeMode:
         if self.WAN_RUNTIME_MODE in ("mac_dev", "linux_cuda"):

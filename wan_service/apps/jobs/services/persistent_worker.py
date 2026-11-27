@@ -92,7 +92,13 @@ class PersistentInferenceWorker:
         repo = cfg.wan_repo_dir
         env = _inference_env(repo=repo, gpu_only=gpu_only)
 
-        cmd = [cfg.WAN_PYTHON, "-u", str(_WORKER_SCRIPT)]
+        from wan_service.core.inference_deps import resolve_wan_python
+
+        wan_py = resolve_wan_python()
+        if wan_py is None:
+            self._init_error = f"WAN_PYTHON not found: {cfg.WAN_PYTHON!r}"
+            return
+        cmd = [str(wan_py), "-u", str(_WORKER_SCRIPT)]
         logger.info(
             "Starting persistent inference worker (gpu_only=%s, %s)",
             gpu_only,

@@ -13,7 +13,7 @@ from pathlib import Path
 from PIL import Image
 
 from wan_service.core.config import get_settings, settings
-from wan_service.core.inference_deps import torch_optional_probe_cuda
+from wan_service.core.inference_deps import resolve_wan_python, torch_optional_probe_cuda
 
 logger = logging.getLogger(__name__)
 
@@ -192,8 +192,15 @@ def run_wan_inference(
                 worker.init_error,
             )
 
+    wan_py = resolve_wan_python()
+    if wan_py is None:
+        raise FileNotFoundError(
+            f"WAN_PYTHON not found: {cfg.WAN_PYTHON!r} "
+            f"(resolved from project root {cfg.project_root})"
+        )
+
     cmd: list[str] = [
-        cfg.WAN_PYTHON,
+        str(wan_py),
         str(script),
         "--task",
         "ti2v-5B",

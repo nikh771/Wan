@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -38,15 +37,9 @@ def _inference_modules_for_backend() -> tuple[str, ...]:
 def resolve_wan_python() -> Path | None:
     """Return the configured interpreter path without following venv symlinks to system python."""
     settings = get_settings()
-    raw = settings.WAN_PYTHON.strip() or "python"
-    candidate = Path(raw)
-    if not candidate.is_absolute():
-        candidate = settings.project_root / candidate
-    if candidate.is_file():
-        return candidate
-    found = shutil.which(raw)
-    if found:
-        return Path(found)
+    resolved = Path(settings.resolved_wan_python())
+    if resolved.is_file():
+        return resolved
     return None
 
 
