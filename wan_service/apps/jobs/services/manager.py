@@ -251,6 +251,10 @@ class JobManager:
             elif "Extracted bridge frame" in line:
                 record.message = "Bridging chunks (last frame → next start)…"
                 record.progress = max(record.progress or 0, record.progress or 0)
+            elif "hunyuan" in line.lower():
+                record.stage = "inference"
+                record.message = "Running Hunyuan worker…"
+                record.progress = max(record.progress or 0, 25)
             elif "CogVideoX" in line or "cogvideox" in line.lower():
                 record.stage = "inference"
                 record.message = "Running CogVideoX worker…"
@@ -289,7 +293,7 @@ class JobManager:
                 "text_to_video" if record.engine_type == "cogvideox" else "image_to_video"
             )
             mode = (record.ltx_mode or default_mode).strip().lower()
-            if record.engine_type in ("wan", "ltx", "cogvideox") and mode not in (
+            if record.engine_type in ("wan", "ltx", "cogvideox", "hunyuan") and mode not in (
                 "text_to_video",
                 "image_to_video",
             ):
@@ -322,7 +326,9 @@ class JobManager:
                 width=record.width,
                 height=record.height,
                 fps=record.fps,
-                mode=mode if record.engine_type in ("wan", "ltx", "cogvideox") else None,  # type: ignore[arg-type]
+                mode=mode
+                if record.engine_type in ("wan", "ltx", "cogvideox", "hunyuan")
+                else None,  # type: ignore[arg-type]
                 seed=record.seed,
                 on_log_line=on_log_line,
                 metadata=job_metadata,

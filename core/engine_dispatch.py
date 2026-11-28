@@ -1,4 +1,4 @@
-"""Route generation jobs to Wan, LTX, or CogVideoX."""
+"""Route generation jobs to Wan, LTX, CogVideoX, or Hunyuan."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import Path
 from core.config import get_settings
 from core.types import EngineType, GenerationJobParams
 from cogvideox_service.engine_service import run_cogvideox_engine
+from hunyuan_service.engine_service import run_hunyuan_engine
 from ltx_service.engine_service import run_ltx_engine
 from wan_service.core.runtime import evaluate_inference_readiness
 from wan_service.engine_service import run_wan_engine
@@ -22,10 +23,12 @@ class EngineReadiness:
 
 def normalize_engine(value: str) -> EngineType:
     engine = (value or "wan").strip().lower()
-    if engine in ("wan", "ltx", "cogvideox"):
+    if engine in ("hunyuan", "hunyuanvideo"):
+        return "hunyuan"  # type: ignore[return-value]
+    if engine in ("wan", "ltx", "cogvideox", "hunyuan"):
         return engine  # type: ignore[return-value]
     raise ValueError(
-        f"Unsupported engine_type {value!r}. Use wan, ltx, or cogvideox."
+        f"Unsupported engine_type {value!r}. Use wan, ltx, cogvideox, or hunyuan."
     )
 
 
@@ -34,6 +37,20 @@ def _ltx_python_executable() -> Path | None:
 
     cfg = get_ltx_settings()
     raw = cfg.resolved_ltx_python()
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = cfg.project_root / candidate
+    if candidate.is_file():
+        return candidate
+    found = shutil.which(raw)
+    return Path(found) if found else None
+
+
+def _hunyuan_python_executable() -> Path | None:
+    from hunyuan_service.settings import get_hunyuan_settings
+
+    cfg = get_hunyuan_settings()
+    raw = cfg.resolved_hunyuan_python()
     candidate = Path(raw)
     if not candidate.is_absolute():
         candidate = cfg.project_root / candidate
@@ -82,6 +99,26 @@ def evaluate_engine_readiness(engine: EngineType) -> EngineReadiness:
             health.get("detail") or "CogVideoX engine is not ready.",
         )
 
+    if engine == "hunyuan":
+        py = _hunyuan_python_executable()
+        if py is None:
+            from hunyuan_service.settings import get_hunyuan_settings
+
+            cfg = get_hunyuan_settings()
+            return EngineReadiness(
+                False,
+                f"HUNYUAN_PYTHON not found: {cfg.resolved_hunyuan_python()!r}",
+            )
+        from hunyuan_service.health import hunyuan_health_payload
+
+        health = hunyuan_health_payload()
+        if health.get("status") == "ready":
+            return EngineReadiness(True, "HunyuanVideo-1.5 ready.")
+        return EngineReadiness(
+            False,
+            health.get("detail") or "Hunyuan engine is not ready.",
+        )
+
     ltx_py = _ltx_python_executable()
     if ltx_py is None:
         from ltx_service.settings import get_ltx_settings
@@ -119,6 +156,10 @@ def run_engine(params: GenerationJobParams, engine: EngineType) -> dict:
     if engine == "cogvideox":
         meta = run_cogvideox_engine(params)
         meta["engine_used"] = "cogvideox"
+        return meta
+    if engine == "hunyuan":
+        meta = run_hunyuan_engine(params)
+        meta["engine_used"] = "hunyuan"
         return meta
     meta = run_ltx_engine(params)
     meta["engine_used"] = "ltx"

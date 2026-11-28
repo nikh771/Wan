@@ -13,7 +13,7 @@ router = APIRouter(tags=["health"])
 def health(
     engine_type: str = Query(
         ...,
-        description="wan | ltx | cogvideox",
+        description="wan | ltx | cogvideox | hunyuan",
     ),
 ) -> dict:
     try:

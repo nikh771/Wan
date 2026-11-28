@@ -1,0 +1,4 @@
+# Hunyuan worker venv — install upstream first, then pin API glue.
+# Primary deps: hunyuan_service/third_party/HunyuanVideo-1.5/requirements.txt
+huggingface_hub>=0.36.0
+pyyaml>=6.0

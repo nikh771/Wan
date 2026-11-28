@@ -23,6 +23,8 @@ def _resolve_job_fps(engine: EngineType, fps: int | None) -> int:
         return WAN_OUTPUT_FPS
     if engine == "cogvideox":
         return 8 if fps is None else int(fps)
+    if engine == "hunyuan":
+        return 24 if fps is None else int(fps)
     return 24 if fps is None else int(fps)
 
 

@@ -122,16 +122,19 @@ if [[ "${FULL_SWITCH}" == "1" ]]; then
   remove_if_dir "${ROOT}/wan_jobs"
   remove_if_dir "${ROOT}/ltx_service/outputs"
   remove_if_dir "${ROOT}/cogvideox_service/outputs"
+  remove_if_dir "${ROOT}/hunyuan_service/outputs"
 
   # Python envs (recreated by setup script)
   remove_if_dir "${ROOT}/venv"
   remove_if_dir "${ROOT}/ltx_service/engines/ltx-env"
   remove_if_dir "${ROOT}/cogvideox_service/engines/cogvideox-env"
+  remove_if_dir "${ROOT}/hunyuan_service/engines/hunyuan-env"
 
   # All local checkpoints (setup re-downloads the target engine only)
   remove_if_dir "${ROOT}/wan_service/models/Wan2.2-TI2V-5B"
   remove_if_dir "${ROOT}/ltx_service/models/ltx"
   remove_if_dir "${ROOT}/cogvideox_service/models/cogvideox"
+  remove_if_dir "${ROOT}/hunyuan_service/models/hunyuan"
 
   # External RunPod paths only (never remove /workspace/Wan when the repo lives there).
   safe_remove_external_path "/workspace/wan_jobs"
@@ -155,6 +158,7 @@ if [[ "${GPU_SETUP_REBUILD_VENVS:-0}" == "1" ]] && [[ "${FULL_SWITCH}" != "1" ]]
   remove_if_dir "${ROOT}/venv"
   remove_if_dir "${ROOT}/ltx_service/engines/ltx-env"
   remove_if_dir "${ROOT}/cogvideox_service/engines/cogvideox-env"
+  remove_if_dir "${ROOT}/hunyuan_service/engines/hunyuan-env"
 fi
 
 echo "==> Clearing pip / Hugging Face / torch caches"

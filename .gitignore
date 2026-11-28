@@ -17,6 +17,10 @@ ltx_service/engines/
 cogvideox_service/engines/
 cogvideox_service/models/
 cogvideox_service/outputs/
+hunyuan_service/engines/
+hunyuan_service/models/
+hunyuan_service/outputs/
+hunyuan_service/third_party/
 
 .DS_Store
 .vscode/

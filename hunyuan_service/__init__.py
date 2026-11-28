@@ -1,0 +1,1 @@
+"""HunyuanVideo-1.5 engine (isolated venv + upstream generate.py)."""

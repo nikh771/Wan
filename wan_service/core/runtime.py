@@ -224,10 +224,11 @@ def wan_health_payload() -> dict[str, Any]:
 
 
 def engine_health_payload(engine_type: str) -> dict[str, Any]:
-    """Health for one engine (``wan`` | ``ltx`` | ``cogvideox``)."""
+    """Health for one engine (``wan`` | ``ltx`` | ``cogvideox`` | ``hunyuan``)."""
     from core.engine_dispatch import normalize_engine
 
     from cogvideox_service.health import cogvideox_health_payload
+    from hunyuan_service.health import hunyuan_health_payload
     from ltx_service.health import ltx_health_payload
 
     name = normalize_engine(engine_type)
@@ -235,8 +236,10 @@ def engine_health_payload(engine_type: str) -> dict[str, Any]:
         body = wan_health_payload()
     elif name == "ltx":
         body = ltx_health_payload()
-    else:
+    elif name == "cogvideox":
         body = cogvideox_health_payload()
+    else:
+        body = hunyuan_health_payload()
     ready = bool(body.get("ready"))
     out: dict[str, Any] = {
         "status": "ok" if ready else "degraded",

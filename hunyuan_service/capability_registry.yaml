@@ -1,0 +1,8 @@
+hunyuan_1_5:
+  capabilities:
+    - text_to_video
+    - image_to_video
+  resolutions:
+    - 480p
+    - 720p
+  notes: "480p I2V step-distilled recommended for fast first tests; disable prompt rewrite in MS2."

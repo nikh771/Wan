@@ -4,6 +4,7 @@
 #   bash scripts/runpod_remote_setup.sh wan        # default
 #   bash scripts/runpod_remote_setup.sh ltx
 #   bash scripts/runpod_remote_setup.sh cogvideox
+#   bash scripts/runpod_remote_setup.sh hunyuan
 #
 # Full switch (default): removes other engines' checkpoints, all venvs, job outputs,
 # pip/HF caches, then installs only the chosen engine.
@@ -32,6 +33,10 @@ case "${ENGINE}" in
     export GPU_SETUP_TARGET_ENGINE=cogvideox
     exec bash "${ROOT}/scripts/runpod_remote_setup_cogvideox.sh"
     ;;
+  hunyuan|hy)
+    export GPU_SETUP_TARGET_ENGINE=hunyuan
+    exec bash "${ROOT}/scripts/runpod_remote_setup_hunyuan.sh"
+    ;;
   clean)
     export GPU_SETUP_FULL_SWITCH=1
     export GPU_SETUP_TARGET_ENGINE="${2:-}"
@@ -39,9 +44,9 @@ case "${ENGINE}" in
     echo "Disk clean only. Run: bash scripts/runpod_remote_setup.sh [wan|ltx|cogvideox]"
     ;;
   *)
-    echo "Usage: $0 [wan|ltx|cogvideox|clean]"
+    echo "Usage: $0 [wan|ltx|cogvideox|hunyuan|clean]"
     echo ""
-    echo "  wan | ltx | cogvideox   Full disk prep + venvs + model weights + .env"
+    echo "  wan | ltx | cogvideox | hunyuan   Full disk prep + venvs + model weights + .env"
     echo "  clean [engine]          Only run gpu_setup_clean_disk.sh (optional target label)"
     exit 1
     ;;

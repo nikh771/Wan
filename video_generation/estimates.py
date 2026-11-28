@@ -9,12 +9,14 @@ _ENGINE_BASE_SEC: dict[EngineType, float] = {
     "wan": 50.0,
     "ltx": 95.0,
     "cogvideox": 130.0,
+    "hunyuan": 180.0,
 }
 
 _LOAD_OVERHEAD_SEC: dict[EngineType, float] = {
     "wan": 25.0,
     "ltx": 35.0,
     "cogvideox": 40.0,
+    "hunyuan": 60.0,
 }
 
 _POSTPROCESS_SEC = 6.0

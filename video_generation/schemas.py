@@ -13,7 +13,7 @@ class VideoGenerateRequest(BaseModel):
     """Shot-level generation request from the orchestration service."""
 
     mode: str = Field(..., description="t2v | i2v (or text_to_video | image_to_video)")
-    engine_type: str = Field(default="wan", description="wan | ltx | cogvideox")
+    engine_type: str = Field(default="wan", description="wan | ltx | cogvideox | hunyuan")
     prompt: str
     duration_seconds: float = Field(default=5.0, gt=0, le=60)
 
